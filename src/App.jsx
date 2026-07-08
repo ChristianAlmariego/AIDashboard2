@@ -1,17 +1,18 @@
 import { useState, useMemo } from "react";
 import { useAdoData } from "./hooks/useAdoData";
-import { shortIteration } from "./utils/grouping";
+import { groupByAssignee, groupByIteration, shortIteration } from "./utils/grouping";
 import LoginPanel from "./components/LoginPanel";
+import StatBar from "./components/StatBar";
 import Toolbar from "./components/Toolbar";
-import AssigneeCard from "./components/AssigneeCard";
+import GroupSection from "./components/GroupSection";
 import "./App.css";
 
 export default function App() {
   const [pat, setPat] = useState("");
   const [connected, setConnected] = useState(false);
+  const [view, setView] = useState("assignee");
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState("All");
-  const [iterationFilter, setIterationFilter] = useState("All");
 
   const { stories, loading, error, lastRefresh, load } = useAdoData();
 
@@ -30,16 +31,8 @@ export default function App() {
     setConnected(false);
   }
 
-  const iterations = useMemo(() => {
-    const set = new Set(stories.map((s) => shortIteration(s.iterationPath)).filter(Boolean));
-    return [...set].sort();
-  }, [stories]);
-
   const filtered = useMemo(() => {
     let result = stories;
-    if (iterationFilter !== "All") {
-      result = result.filter((s) => shortIteration(s.iterationPath) === iterationFilter);
-    }
     if (stateFilter !== "All") {
       result = result.filter((s) => s.state === stateFilter);
     }
@@ -54,21 +47,12 @@ export default function App() {
       );
     }
     return result;
-  }, [stories, stateFilter, iterationFilter, search]);
+  }, [stories, stateFilter, search]);
 
-  const assigneeGroups = useMemo(() => {
-    const map = new Map();
-    for (const story of filtered) {
-      const key = story.assignee || "Unassigned";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(story);
-    }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [filtered]);
-
-  const todayStr = new Date().toLocaleDateString("en-US", {
-    year: "numeric", month: "long", day: "numeric",
-  });
+  const groups = useMemo(() => {
+    if (view === "assignee") return groupByAssignee(filtered);
+    return groupByIteration(filtered).map(([k, v]) => [shortIteration(k), v]);
+  }, [filtered, view]);
 
   if (!connected) {
     return <LoginPanel onConnect={handleConnect} loading={loading} error={error} />;
@@ -87,27 +71,12 @@ export default function App() {
             <span className="header-sub">Emerson Quality Assurance Team · EMR-DigMod\EMR DCX IT</span>
           </div>
         </div>
-
-        {stories.length > 0 && (
-          <div className="iteration-bar">
-            <label className="iteration-label" htmlFor="iter-select">Sprint / Iteration</label>
-            <select
-              id="iter-select"
-              className="iteration-select"
-              value={iterationFilter}
-              onChange={(e) => setIterationFilter(e.target.value)}
-            >
-              <option value="All">All Iterations</option>
-              {iterations.map((it) => (
-                <option key={it} value={it}>{it}</option>
-              ))}
-            </select>
-          </div>
-        )}
       </header>
 
       <main className="app-main">
         <Toolbar
+          view={view}
+          onViewChange={setView}
           search={search}
           onSearchChange={setSearch}
           stateFilter={stateFilter}
@@ -135,15 +104,18 @@ export default function App() {
         )}
 
         {!loading && !error && stories.length > 0 && (
-          <div className="dash-grid">
-            {assigneeGroups.length === 0 ? (
-              <div className="empty-state">No stories match your filters.</div>
-            ) : (
-              assigneeGroups.map(([name, items]) => (
-                <AssigneeCard key={name} name={name} stories={items} todayStr={todayStr} />
-              ))
-            )}
-          </div>
+          <>
+            <StatBar stories={filtered} />
+            <div className="groups-container">
+              {groups.length === 0 ? (
+                <div className="empty-state">No stories match your filters.</div>
+              ) : (
+                groups.map(([label, items]) => (
+                  <GroupSection key={label} label={label} stories={items} />
+                ))
+              )}
+            </div>
+          </>
         )}
 
         {!loading && !error && stories.length === 0 && (

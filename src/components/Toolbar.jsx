@@ -1,4 +1,6 @@
 export default function Toolbar({
+  view,
+  onViewChange,
   search,
   onSearchChange,
   stateFilter,
@@ -13,6 +15,21 @@ export default function Toolbar({
   return (
     <div className="toolbar">
       <div className="toolbar-left">
+        <div className="view-toggle">
+          <button
+            className={view === "assignee" ? "active" : ""}
+            onClick={() => onViewChange("assignee")}
+          >
+            By Assignee
+          </button>
+          <button
+            className={view === "iteration" ? "active" : ""}
+            onClick={() => onViewChange("iteration")}
+          >
+            By Iteration
+          </button>
+        </div>
+
         <input
           className="search-input"
           type="search"
