@@ -1,10 +1,11 @@
 export default function Toolbar({
-  view,
-  onViewChange,
   search,
   onSearchChange,
   stateFilter,
   onStateFilterChange,
+  iterationFilter,
+  onIterationFilterChange,
+  iterations,
   lastRefresh,
   onRefresh,
   loading,
@@ -15,21 +16,6 @@ export default function Toolbar({
   return (
     <div className="toolbar">
       <div className="toolbar-left">
-        <div className="view-toggle">
-          <button
-            className={view === "assignee" ? "active" : ""}
-            onClick={() => onViewChange("assignee")}
-          >
-            By Assignee
-          </button>
-          <button
-            className={view === "iteration" ? "active" : ""}
-            onClick={() => onViewChange("iteration")}
-          >
-            By Iteration
-          </button>
-        </div>
-
         <input
           className="search-input"
           type="search"
@@ -47,6 +33,17 @@ export default function Toolbar({
             <option key={s} value={s}>
               {s === "All" ? "All States" : s}
             </option>
+          ))}
+        </select>
+
+        <select
+          className="state-filter"
+          value={iterationFilter}
+          onChange={(e) => onIterationFilterChange(e.target.value)}
+        >
+          <option value="All">All Iterations</option>
+          {iterations.map((it) => (
+            <option key={it} value={it}>{it}</option>
           ))}
         </select>
       </div>
