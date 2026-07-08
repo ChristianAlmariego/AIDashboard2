@@ -14,21 +14,35 @@ const LEGEND = [
   { color: "#2ecc71", label: "Complete/Done (tasks)" },
 ];
 
+const STATUS_ORDER = [
+  "QA Test Failed",
+  "Blocked",
+  "In Progress Dev",
+  "Waiting for Stage Deploy",
+  "QA Test",
+  "New",
+];
+
+const STATUS_COLORS = {
+  "In Progress Dev":          { bg: "#fff3cd", border: "#f0c040", text: "#7a5700" },
+  "QA Test":                  { bg: "#d1ecf1", border: "#17a2b8", text: "#0c5460" },
+  "QA Test Failed":           { bg: "#f8d7da", border: "#dc3545", text: "#721c24" },
+  "Waiting for Stage Deploy": { bg: "#ede0f7", border: "#9b59b6", text: "#5e2a8a" },
+  "Blocked":                  { bg: "#f8d7da", border: "#dc3545", text: "#721c24" },
+  "New":                      { bg: "#e9ecef", border: "#adb5bd", text: "#495057" },
+};
+
 export default function App() {
   const [pat, setPat] = useState("");
   const [connected, setConnected] = useState(false);
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState("All");
   const [iterationFilter, setIterationFilter] = useState("All");
+  const [tab, setTab] = useState("dashboard");
 
   const { stories, loading, error, lastRefresh, load } = useAdoData();
 
-  function handleConnect(token) {
-    setPat(token);
-    setConnected(true);
-    load(token);
-  }
-
+  function handleConnect(token) { setPat(token); setConnected(true); load(token); }
   function handleRefresh() { if (pat) load(pat); }
   function handleDisconnect() { setPat(""); setConnected(false); }
 
@@ -66,6 +80,23 @@ export default function App() {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
+  const statusGroups = useMemo(() => {
+    const map = new Map();
+    for (const story of filtered) {
+      const key = story.state || "Unknown";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(story);
+    }
+    const sorted = [...map.entries()].sort(([a], [b]) => {
+      const ai = STATUS_ORDER.indexOf(a);
+      const bi = STATUS_ORDER.indexOf(b);
+      const av = ai === -1 ? 999 : ai;
+      const bv = bi === -1 ? 999 : bi;
+      return av - bv;
+    });
+    return sorted;
+  }, [filtered]);
+
   const todayStr = new Date().toLocaleDateString("en-US", {
     year: "numeric", month: "long", day: "numeric",
   });
@@ -84,36 +115,23 @@ export default function App() {
         <div className="dash-header-right">
           <div className="dash-date">📅 {todayStr}</div>
           <div className="dash-controls">
-            <select
-              className="dash-select"
-              value={iterationFilter}
-              onChange={(e) => setIterationFilter(e.target.value)}
-            >
+            <select className="dash-select" value={iterationFilter} onChange={(e) => setIterationFilter(e.target.value)}>
               <option value="All">All Iterations</option>
               {iterations.map((it) => <option key={it} value={it}>{it}</option>)}
             </select>
-            <select
-              className="dash-select"
-              value={stateFilter}
-              onChange={(e) => setStateFilter(e.target.value)}
-            >
+            <select className="dash-select" value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
               {["All","New","Active","Resolved","Closed"].map((s) => (
                 <option key={s} value={s}>{s === "All" ? "All States" : s}</option>
               ))}
             </select>
             <input
-              className="dash-search"
-              type="search"
-              placeholder="Search…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              className="dash-search" type="search" placeholder="Search…"
+              value={search} onChange={(e) => setSearch(e.target.value)}
             />
             <button className="dash-btn" onClick={handleRefresh} disabled={loading}>
               {loading ? "Loading…" : "↻ Refresh"}
             </button>
-            <button className="dash-btn dash-btn-danger" onClick={handleDisconnect}>
-              Disconnect
-            </button>
+            <button className="dash-btn dash-btn-danger" onClick={handleDisconnect}>Disconnect</button>
           </div>
         </div>
       </header>
@@ -132,6 +150,15 @@ export default function App() {
         )}
       </div>
 
+      <div className="tab-bar">
+        <button className={`tab-btn${tab === "dashboard" ? " active" : ""}`} onClick={() => setTab("dashboard")}>
+          📋 Dashboard
+        </button>
+        <button className={`tab-btn${tab === "summary" ? " active" : ""}`} onClick={() => setTab("summary")}>
+          📊 Summary by Status
+        </button>
+      </div>
+
       <main className="dash-main">
         {loading && (
           <div className="loading-state">
@@ -139,21 +166,17 @@ export default function App() {
             <span>Fetching user stories from Azure DevOps…</span>
           </div>
         )}
-
         {!loading && error && (
           <div className="error-state">
             <strong>Error connecting to ADO:</strong> {error}
-            <button className="dash-btn" onClick={handleRefresh} style={{ marginTop: 12 }}>
-              Retry
-            </button>
+            <button className="dash-btn" onClick={handleRefresh} style={{ marginTop: 12 }}>Retry</button>
           </div>
         )}
-
         {!loading && !error && stories.length === 0 && (
           <div className="empty-state">No user stories found under the configured area path.</div>
         )}
 
-        {!loading && !error && stories.length > 0 && (
+        {!loading && !error && stories.length > 0 && tab === "dashboard" && (
           assigneeGroups.length === 0
             ? <div className="empty-state">No stories match your filters.</div>
             : <div className="dash-grid">
@@ -161,6 +184,70 @@ export default function App() {
                   <AssigneeCard key={name} name={name} stories={items} todayStr={todayStr} />
                 ))}
               </div>
+        )}
+
+        {!loading && !error && stories.length > 0 && tab === "summary" && (
+          <div className="summary-view">
+            <div className="summary-totals">
+              <div className="sum-total-tile">
+                <div className="sum-total-num">{filtered.length}</div>
+                <div className="sum-total-lbl">Total Stories</div>
+              </div>
+              {statusGroups.map(([status, items]) => {
+                const col = STATUS_COLORS[status] || { bg: "#e9ecef", border: "#adb5bd", text: "#495057" };
+                return (
+                  <div key={status} className="sum-total-tile" style={{ borderTopColor: col.border }}>
+                    <div className="sum-total-num" style={{ color: col.text }}>{items.length}</div>
+                    <div className="sum-total-lbl">{status}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {statusGroups.map(([status, items]) => {
+              const col = STATUS_COLORS[status] || { bg: "#e9ecef", border: "#adb5bd", text: "#495057" };
+              return (
+                <div key={status} className="sum-group">
+                  <div className="sum-group-header" style={{ background: col.bg, borderLeftColor: col.border, color: col.text }}>
+                    <span className="sum-group-title">{status}</span>
+                    <span className="sum-group-count">{items.length} {items.length === 1 ? "story" : "stories"}</span>
+                  </div>
+                  <table className="sum-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Assignee</th>
+                        <th>Sprint</th>
+                        <th>Pts</th>
+                        <th>Priority</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((story) => (
+                        <tr key={story.id}>
+                          <td>
+                            <a href={story.url} target="_blank" rel="noreferrer" className="sum-id-link">
+                              #{story.id}
+                            </a>
+                          </td>
+                          <td>
+                            <a href={story.url} target="_blank" rel="noreferrer" className="sum-title-link">
+                              {story.title}
+                            </a>
+                          </td>
+                          <td>{story.assignee}</td>
+                          <td>{shortIteration(story.iterationPath)}</td>
+                          <td>{story.storyPoints ?? "—"}</td>
+                          <td>{story.priority ? `P${story.priority}` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+          </div>
         )}
       </main>
 
