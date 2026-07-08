@@ -6,18 +6,12 @@ const S_CFG = {
   "Blocked":                  { cls: "s-blk",   badge: "pill-blk",   icon: "🚫", label: "Blocked",                  border: "#dc3545" },
   "New":                      { cls: "s-new",   badge: "pill-new",   icon: "⬜", label: "New",                      border: "#adb5bd" },
 };
-const T_CFG = {
-  "In Progress":    { cls: "t-prog", badge: "tb-prog", icon: "🔄", label: "In Progress" },
-  "Complete/Done":  { cls: "t-done", badge: "tb-done", icon: "✅", label: "Done" },
-  "New":            { cls: "t-new",  badge: "tb-new",  icon: "⬜", label: "New" },
-};
 const STATUS_COLORS = {
   "In Progress Dev": "#856404", "QA Test": "#0c5460", "QA Test Failed": "#721c24",
   "Waiting for Stage Deploy": "#6a1b9a", "Blocked": "#721c24", "New": "#495057",
 };
 
 function sc(s) { return S_CFG[s] || { cls: "s-new", badge: "pill-new", icon: "⬜", label: s, border: "#adb5bd" }; }
-function tc(s) { return T_CFG[s] || { cls: "t-new", badge: "tb-new",  icon: "⬜", label: s }; }
 
 export default function AssigneeCard({ name, stories, todayStr }) {
   const counts = {};
@@ -61,7 +55,6 @@ export default function AssigneeCard({ name, stories, todayStr }) {
 
         {stories.map((story) => {
           const c = sc(story.state);
-          const hasTasks = story.tasks && story.tasks.length > 0;
           const sub = ["#" + story.id, story.priority ? `P${story.priority}` : null].filter(Boolean).join(" · ");
 
           return (
@@ -74,25 +67,6 @@ export default function AssigneeCard({ name, stories, todayStr }) {
                 </div>
                 <span className={`story-badge ${c.badge}`}>{c.label}</span>
               </div>
-
-              {hasTasks && (
-                <div className="task-list">
-                  {story.tasks.map((task) => {
-                    const t = tc(task.state);
-                    const isDiffOwner = task.assignee && task.assignee !== name;
-                    const firstName = isDiffOwner ? task.assignee.split(" ")[0] : null;
-                    return (
-                      <div key={task.id} className={`task-row ${t.cls}`}>
-                        <span className="task-icon">{t.icon}</span>
-                        <span className="task-text">{task.title}</span>
-                        {firstName && <span className="assignee-tag">{firstName}</span>}
-                        <span className="task-id">#{task.id}</span>
-                        <span className={`task-badge ${t.badge}`}>{t.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           );
         })}

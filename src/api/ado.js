@@ -42,23 +42,6 @@ async function batchFetch(pat, ids) {
   return results.flat();
 }
 
-async function batchFetchRelations(pat, ids) {
-  const batches = [];
-  for (let i = 0; i < ids.length; i += 200) batches.push(ids.slice(i, i + 200));
-  const results = await Promise.all(
-    batches.map(async (batch) => {
-      const res = await fetch(
-        `${BASE_URL}/wit/workitems?ids=${batch.join(",")}&$expand=relations&api-version=7.0`,
-        { headers: makeHeaders(pat) }
-      );
-      if (!res.ok) throw new Error(`ADO fetch error ${res.status}`);
-      const data = await res.json();
-      return data.value ?? [];
-    })
-  );
-  return results.flat();
-}
-
 function normalizeName(assignedTo) {
   if (!assignedTo) return "Unassigned";
   return assignedTo.displayName ?? "Unassigned";
@@ -80,13 +63,10 @@ function normalizeItem(raw) {
     createdDate: f["System.CreatedDate"],
     changedDate: f["System.ChangedDate"],
     url: `https://dev.azure.com/${ORG}/${PROJECT}/_workitems/edit/${raw.id}`,
-    // keep raw relations for task linking
-    _relations: raw.relations ?? [],
   };
 }
 
 export async function fetchUserStories(pat) {
-  // Step 1: WIQL — get all User Story IDs under the area path
   const wiql = {
     query: `
       SELECT [System.Id] FROM WorkItems
@@ -109,42 +89,6 @@ export async function fetchUserStories(pat) {
   const storyIds = workItems.map((w) => w.id);
   if (!storyIds.length) return [];
 
-  // Step 2: Fetch story fields and relations in parallel (separate requests — ADO rejects both combined)
-  const [rawStories, rawRelations] = await Promise.all([
-    batchFetch(pat, storyIds),
-    batchFetchRelations(pat, storyIds),
-  ]);
-  const stories = rawStories.map(normalizeItem);
-
-  // Step 3: Collect unique child task IDs from hierarchy-forward relations
-  const relMap = {};
-  for (const raw of rawRelations) relMap[raw.id] = raw.relations ?? [];
-
-  const taskIdSet = new Set();
-  const storyTaskIds = {};
-  for (const story of stories) {
-    const childIds = (relMap[story.id] ?? [])
-      .filter((r) => r.rel === "System.LinkTypes.Hierarchy-Forward")
-      .map((r) => parseInt(r.url.split("/").pop(), 10))
-      .filter(Boolean);
-    storyTaskIds[story.id] = childIds;
-    childIds.forEach((id) => taskIdSet.add(id));
-  }
-
-  // Step 4: Batch-fetch tasks (if any)
-  const taskMap = {};
-  if (taskIdSet.size > 0) {
-    const rawTasks = await batchFetch(pat, [...taskIdSet]);
-    rawTasks.forEach((raw) => {
-      taskMap[raw.id] = normalizeItem(raw);
-    });
-  }
-
-  // Step 5: Attach tasks to their parent story
-  return stories.map((story) => ({
-    ...story,
-    tasks: (storyTaskIds[story.id] ?? [])
-      .map((id) => taskMap[id])
-      .filter(Boolean),
-  }));
+  const rawStories = await batchFetch(pat, storyIds);
+  return rawStories.map(normalizeItem);
 }
