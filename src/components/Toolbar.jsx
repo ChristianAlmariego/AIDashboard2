@@ -1,0 +1,73 @@
+export default function Toolbar({
+  view,
+  onViewChange,
+  search,
+  onSearchChange,
+  stateFilter,
+  onStateFilterChange,
+  lastRefresh,
+  onRefresh,
+  loading,
+  onDisconnect,
+}) {
+  const states = ["All", "New", "Active", "Resolved", "Closed"];
+
+  return (
+    <div className="toolbar">
+      <div className="toolbar-left">
+        <div className="view-toggle">
+          <button
+            className={view === "assignee" ? "active" : ""}
+            onClick={() => onViewChange("assignee")}
+          >
+            By Assignee
+          </button>
+          <button
+            className={view === "iteration" ? "active" : ""}
+            onClick={() => onViewChange("iteration")}
+          >
+            By Iteration
+          </button>
+        </div>
+
+        <input
+          className="search-input"
+          type="search"
+          placeholder="Search stories…"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+        />
+
+        <select
+          className="state-filter"
+          value={stateFilter}
+          onChange={(e) => onStateFilterChange(e.target.value)}
+        >
+          {states.map((s) => (
+            <option key={s} value={s}>
+              {s === "All" ? "All States" : s}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="toolbar-right">
+        {lastRefresh && (
+          <span className="refresh-time">
+            Updated {lastRefresh.toLocaleTimeString()}
+          </span>
+        )}
+        <button className="btn-icon" onClick={onRefresh} disabled={loading} title="Refresh">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+          </svg>
+          Refresh
+        </button>
+        <button className="btn-icon btn-danger" onClick={onDisconnect} title="Disconnect">
+          Disconnect
+        </button>
+      </div>
+    </div>
+  );
+}
