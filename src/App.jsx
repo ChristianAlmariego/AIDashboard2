@@ -87,6 +87,23 @@ export default function App() {
             <span className="header-sub">Emerson Quality Assurance Team · EMR-DigMod\EMR DCX IT</span>
           </div>
         </div>
+
+        {stories.length > 0 && (
+          <div className="iteration-bar">
+            <label className="iteration-label" htmlFor="iter-select">Sprint / Iteration</label>
+            <select
+              id="iter-select"
+              className="iteration-select"
+              value={iterationFilter}
+              onChange={(e) => setIterationFilter(e.target.value)}
+            >
+              <option value="All">All Iterations</option>
+              {iterations.map((it) => (
+                <option key={it} value={it}>{it}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </header>
 
       <main className="app-main">
@@ -95,9 +112,6 @@ export default function App() {
           onSearchChange={setSearch}
           stateFilter={stateFilter}
           onStateFilterChange={setStateFilter}
-          iterationFilter={iterationFilter}
-          onIterationFilterChange={setIterationFilter}
-          iterations={iterations}
           lastRefresh={lastRefresh}
           onRefresh={handleRefresh}
           loading={loading}

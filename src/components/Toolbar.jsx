@@ -3,9 +3,6 @@ export default function Toolbar({
   onSearchChange,
   stateFilter,
   onStateFilterChange,
-  iterationFilter,
-  onIterationFilterChange,
-  iterations,
   lastRefresh,
   onRefresh,
   loading,
@@ -33,17 +30,6 @@ export default function Toolbar({
             <option key={s} value={s}>
               {s === "All" ? "All States" : s}
             </option>
-          ))}
-        </select>
-
-        <select
-          className="state-filter"
-          value={iterationFilter}
-          onChange={(e) => onIterationFilterChange(e.target.value)}
-        >
-          <option value="All">All Iterations</option>
-          {iterations.map((it) => (
-            <option key={it} value={it}>{it}</option>
           ))}
         </select>
       </div>

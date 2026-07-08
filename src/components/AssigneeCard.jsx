@@ -1,12 +1,10 @@
-import { useState } from "react";
-
 const S_CFG = {
-  "In Progress Dev":          { cls: "s-prog",  badge: "pill-prog",  icon: "🔄", label: "In Progress Dev" },
-  "QA Test":                  { cls: "s-test",  badge: "pill-test",  icon: "🧪", label: "QA Test" },
-  "QA Test Failed":           { cls: "s-fail",  badge: "pill-fail",  icon: "❌", label: "QA Test Failed" },
-  "Waiting for Stage Deploy": { cls: "s-wait",  badge: "pill-wait",  icon: "⏸", label: "Waiting for Stage Deploy" },
-  "Blocked":                  { cls: "s-wait",  badge: "pill-blk",   icon: "🚫", label: "Blocked" },
-  "New":                      { cls: "s-new",   badge: "pill-new",   icon: "⬜", label: "New" },
+  "In Progress Dev":          { cls: "s-prog",  badge: "pill-prog",  icon: "🔄", label: "In Progress Dev",          border: "#f0a500" },
+  "QA Test":                  { cls: "s-test",  badge: "pill-test",  icon: "🧪", label: "QA Test",                  border: "#17a2b8" },
+  "QA Test Failed":           { cls: "s-fail",  badge: "pill-fail",  icon: "❌", label: "QA Test Failed",           border: "#dc3545" },
+  "Waiting for Stage Deploy": { cls: "s-wait",  badge: "pill-wait",  icon: "⏸", label: "Waiting for Stage Deploy", border: "#9b59b6" },
+  "Blocked":                  { cls: "s-blk",   badge: "pill-blk",   icon: "🚫", label: "Blocked",                  border: "#dc3545" },
+  "New":                      { cls: "s-new",   badge: "pill-new",   icon: "⬜", label: "New",                      border: "#adb5bd" },
 };
 const T_CFG = {
   "In Progress":    { cls: "t-prog", badge: "tb-prog", icon: "🔄", label: "In Progress" },
@@ -18,21 +16,10 @@ const STATUS_COLORS = {
   "Waiting for Stage Deploy": "#6a1b9a", "Blocked": "#721c24", "New": "#495057",
 };
 
-function sc(s) { return S_CFG[s] || { cls: "s-new", badge: "pill-new", icon: "⬜", label: s }; }
-function tc(s) { return T_CFG[s] || { cls: "t-new",  badge: "tb-new",  icon: "⬜", label: s }; }
+function sc(s) { return S_CFG[s] || { cls: "s-new", badge: "pill-new", icon: "⬜", label: s, border: "#adb5bd" }; }
+function tc(s) { return T_CFG[s] || { cls: "t-new", badge: "tb-new",  icon: "⬜", label: s }; }
 
 export default function AssigneeCard({ name, stories, todayStr }) {
-  const [openIds, setOpenIds] = useState(new Set());
-
-  function toggle(id) {
-    setOpenIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
-  // Summary counts
   const counts = {};
   stories.forEach((s) => { counts[s.state] = (counts[s.state] || 0) + 1; });
 
@@ -61,7 +48,6 @@ export default function AssigneeCard({ name, stories, todayStr }) {
       </div>
 
       <div className="card-body">
-        {/* Summary bar */}
         <div className="summary-bar">
           {sumEntries.map(([lbl, n, col]) => (
             <div key={lbl} className="sbar-item">
@@ -71,35 +57,26 @@ export default function AssigneeCard({ name, stories, todayStr }) {
           ))}
         </div>
 
-        <div className="section-label">
-          📖 User Stories <span style={{ fontWeight: 400, fontSize: "0.65rem", color: "#aaa" }}>(click ▶ to expand tasks)</span>
-        </div>
+        <div className="section-label">📖 User Stories</div>
 
         {stories.map((story) => {
           const c = sc(story.state);
           const hasTasks = story.tasks && story.tasks.length > 0;
-          const isOpen = openIds.has(story.id);
-          const sub = ["#" + story.id, story.priority].filter(Boolean).join(" · ");
+          const sub = ["#" + story.id, story.priority ? `P${story.priority}` : null].filter(Boolean).join(" · ");
 
           return (
-            <div key={story.id} className="story-block">
-              <div
-                className={`story-row ${c.cls}${!hasTasks ? " no-tasks" : ""}`}
-                onClick={hasTasks ? () => toggle(story.id) : undefined}
-              >
+            <div key={story.id} className="story-block" style={{ borderLeftColor: c.border }}>
+              <div className={`story-row ${c.cls}`}>
                 <span className="story-icon">{c.icon}</span>
                 <div className="story-text">
                   <div className="s-title">{story.title}</div>
                   <div className="s-subtitle">{sub}</div>
                 </div>
                 <span className={`story-badge ${c.badge}`}>{c.label}</span>
-                {hasTasks && (
-                  <span className={`chevron${isOpen ? " open" : ""}`}>▶</span>
-                )}
               </div>
 
               {hasTasks && (
-                <div className={`task-list${isOpen ? " open" : ""}`}>
+                <div className="task-list">
                   {story.tasks.map((task) => {
                     const t = tc(task.state);
                     const isDiffOwner = task.assignee && task.assignee !== name;
