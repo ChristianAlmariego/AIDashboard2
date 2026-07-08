@@ -25,15 +25,30 @@ function makeHeaders(pat) {
   };
 }
 
-async function batchFetch(pat, ids, expandRelations = false) {
+async function batchFetch(pat, ids) {
   const batches = [];
   for (let i = 0; i < ids.length; i += 200) batches.push(ids.slice(i, i + 200));
-
   const results = await Promise.all(
     batches.map(async (batch) => {
-      const expand = expandRelations ? "&$expand=relations" : "";
       const res = await fetch(
-        `${BASE_URL}/wit/workitems?ids=${batch.join(",")}&fields=${FIELDS}${expand}&api-version=7.0`,
+        `${BASE_URL}/wit/workitems?ids=${batch.join(",")}&fields=${FIELDS}&api-version=7.0`,
+        { headers: makeHeaders(pat) }
+      );
+      if (!res.ok) throw new Error(`ADO fetch error ${res.status}`);
+      const data = await res.json();
+      return data.value ?? [];
+    })
+  );
+  return results.flat();
+}
+
+async function batchFetchRelations(pat, ids) {
+  const batches = [];
+  for (let i = 0; i < ids.length; i += 200) batches.push(ids.slice(i, i + 200));
+  const results = await Promise.all(
+    batches.map(async (batch) => {
+      const res = await fetch(
+        `${BASE_URL}/wit/workitems?ids=${batch.join(",")}&$expand=relations&api-version=7.0`,
         { headers: makeHeaders(pat) }
       );
       if (!res.ok) throw new Error(`ADO fetch error ${res.status}`);
@@ -94,27 +109,32 @@ export async function fetchUserStories(pat) {
   const storyIds = workItems.map((w) => w.id);
   if (!storyIds.length) return [];
 
-  // Step 2: Fetch stories + their relations (to discover child task IDs)
-  const rawStories = await batchFetch(pat, storyIds, true);
+  // Step 2: Fetch story fields and relations in parallel (separate requests — ADO rejects both combined)
+  const [rawStories, rawRelations] = await Promise.all([
+    batchFetch(pat, storyIds),
+    batchFetchRelations(pat, storyIds),
+  ]);
   const stories = rawStories.map(normalizeItem);
 
   // Step 3: Collect unique child task IDs from hierarchy-forward relations
+  const relMap = {};
+  for (const raw of rawRelations) relMap[raw.id] = raw.relations ?? [];
+
   const taskIdSet = new Set();
   const storyTaskIds = {};
-  for (const raw of rawStories) {
-    const story = stories.find((s) => s.id === raw.id);
-    const childIds = (raw.relations ?? [])
+  for (const story of stories) {
+    const childIds = (relMap[story.id] ?? [])
       .filter((r) => r.rel === "System.LinkTypes.Hierarchy-Forward")
       .map((r) => parseInt(r.url.split("/").pop(), 10))
       .filter(Boolean);
-    storyTaskIds[raw.id] = childIds;
+    storyTaskIds[story.id] = childIds;
     childIds.forEach((id) => taskIdSet.add(id));
   }
 
   // Step 4: Batch-fetch tasks (if any)
   const taskMap = {};
   if (taskIdSet.size > 0) {
-    const rawTasks = await batchFetch(pat, [...taskIdSet], false);
+    const rawTasks = await batchFetch(pat, [...taskIdSet]);
     rawTasks.forEach((raw) => {
       taskMap[raw.id] = normalizeItem(raw);
     });
