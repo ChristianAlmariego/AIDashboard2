@@ -82,19 +82,27 @@ export default function AssigneeCard({ name, stories, todayStr }) {
 
           return (
             <div key={story.id} className={`story-block ${c.cls}`}>
-              <div
-                className="story-row"
-                onClick={hasTasks ? () => toggle(story.id) : undefined}
-                style={{ cursor: hasTasks ? "pointer" : "default" }}
-              >
-                <span className="story-icon">{c.icon}</span>
-                <div className="story-text">
-                  <div className="s-title">{story.title}</div>
-                  <div className="s-subtitle">{sub}</div>
-                </div>
+              <div className="story-row">
+                <a
+                  href={story.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="story-link"
+                  title="Open in Azure DevOps"
+                >
+                  <span className="story-icon">{c.icon}</span>
+                  <div className="story-text">
+                    <div className="s-title">{story.title}</div>
+                    <div className="s-subtitle">{sub}</div>
+                  </div>
+                </a>
                 <span className={`story-badge ${c.badge}`}>{c.label}</span>
                 {hasTasks && (
-                  <span className={`chevron${isOpen ? " open" : ""}`}>▶</span>
+                  <span
+                    className={`chevron${isOpen ? " open" : ""}`}
+                    onClick={() => toggle(story.id)}
+                    title="Expand tasks"
+                  >▶</span>
                 )}
               </div>
 

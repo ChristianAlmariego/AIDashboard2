@@ -111,14 +111,15 @@ body {
 /* ---- Main content ---- */
 .dash-main { flex: 1; padding: 16px 20px; }
 
-/* ---- Card grid — horizontal scroll ---- */
+/* ---- Card grid — 3 per row ---- */
 .dash-grid {
-  display: flex;
-  gap: 14px;
-  overflow-x: auto;
-  padding-bottom: 12px;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  align-items: start;
 }
+@media (max-width: 1100px) { .dash-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px)  { .dash-grid { grid-template-columns: 1fr; } }
 
 /* ---- Assignee card ---- */
 .card {
@@ -129,9 +130,6 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-width: 360px;
-  max-width: 400px;
-  flex-shrink: 0;
 }
 
 .card-header {
@@ -186,9 +184,11 @@ body {
   align-items: center;
   gap: 7px;
   padding: 8px 10px;
-  transition: filter 0.1s;
 }
-.story-row:hover { filter: brightness(0.97); }
+
+.chevron { font-size: 9px; color: #57606a; flex-shrink: 0; transition: transform 0.2s; cursor: pointer; padding: 2px 4px; border-radius: 3px; }
+.chevron:hover { background: rgba(0,0,0,0.08); }
+.chevron.open { transform: rotate(90deg); }
 
 .s-prog { background: #fffbf0; }
 .s-test { background: #f0fafc; }
@@ -196,6 +196,18 @@ body {
 .s-wait { background: #faf0ff; }
 .s-blk  { background: #fff5f5; }
 .s-new  { background: #f8f9fa; }
+
+.story-link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 4px;
+}
+.story-link:hover .s-title { text-decoration: underline; color: #0078d4; }
 
 .story-icon { font-size: 14px; flex-shrink: 0; }
 .story-text { flex: 1; min-width: 0; }
@@ -214,8 +226,6 @@ body {
 .pill-blk.story-badge,  .story-badge.pill-blk  { background: #f8d7da; color: #721c24; border-color: #dc3545; }
 .pill-new.story-badge,  .story-badge.pill-new  { background: #e9ecef; color: #495057; border-color: #adb5bd; }
 
-.chevron { font-size: 9px; color: #57606a; flex-shrink: 0; transition: transform 0.2s; }
-.chevron.open { transform: rotate(90deg); }
 
 /* ---- Task list ---- */
 .task-list { border-top: 1px solid #e1e4e8; }
