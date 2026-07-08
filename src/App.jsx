@@ -204,49 +204,57 @@ export default function App() {
               })}
             </div>
 
-            {statusGroups.map(([status, items]) => {
-              const col = STATUS_COLORS[status] || { bg: "#e9ecef", border: "#adb5bd", text: "#495057" };
-              return (
-                <div key={status} className="sum-group">
-                  <div className="sum-group-header" style={{ background: col.bg, borderLeftColor: col.border, color: col.text }}>
-                    <span className="sum-group-title">{status}</span>
-                    <span className="sum-group-count">{items.length} {items.length === 1 ? "story" : "stories"}</span>
-                  </div>
-                  <table className="sum-table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Title</th>
-                        <th>Assignee</th>
-                        <th>Sprint</th>
-                        <th>Pts</th>
-                        <th>Priority</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((story) => (
-                        <tr key={story.id}>
+            <div className="sum-table-wrap">
+              <table className="sum-table">
+                <colgroup>
+                  <col style={{ width: "100px" }} />
+                  <col />
+                  <col style={{ width: "220px" }} />
+                  <col style={{ width: "90px" }} />
+                  <col style={{ width: "50px" }} />
+                  <col style={{ width: "70px" }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Assignee</th>
+                    <th>Sprint</th>
+                    <th>Pts</th>
+                    <th>Priority</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {statusGroups.map(([status, items]) => {
+                    const col = STATUS_COLORS[status] || { bg: "#e9ecef", border: "#adb5bd", text: "#495057" };
+                    return [
+                      <tr key={`hdr-${status}`} className="sum-group-row">
+                        <td colSpan={6}>
+                          <span className="sum-group-label" style={{ color: col.text, borderLeftColor: col.border, background: col.bg }}>
+                            {status}
+                          </span>
+                          <span className="sum-group-count">{items.length} {items.length === 1 ? "story" : "stories"}</span>
+                        </td>
+                      </tr>,
+                      ...items.map((story) => (
+                        <tr key={story.id} className="sum-story-row">
                           <td>
-                            <a href={story.url} target="_blank" rel="noreferrer" className="sum-id-link">
-                              #{story.id}
-                            </a>
+                            <a href={story.url} target="_blank" rel="noreferrer" className="sum-id-link">#{story.id}</a>
                           </td>
                           <td>
-                            <a href={story.url} target="_blank" rel="noreferrer" className="sum-title-link">
-                              {story.title}
-                            </a>
+                            <a href={story.url} target="_blank" rel="noreferrer" className="sum-title-link">{story.title}</a>
                           </td>
                           <td>{story.assignee}</td>
                           <td>{shortIteration(story.iterationPath)}</td>
                           <td>{story.storyPoints ?? "—"}</td>
                           <td>{story.priority ? `P${story.priority}` : "—"}</td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })}
+                      )),
+                    ];
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </main>
