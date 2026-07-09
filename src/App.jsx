@@ -3,6 +3,7 @@ import { useAdoData } from "./hooks/useAdoData";
 import { shortIteration } from "./utils/grouping";
 import LoginPanel from "./components/LoginPanel";
 import AssigneeCard from "./components/AssigneeCard";
+import BugsTab from "./components/BugsTab";
 import "./App.css";
 
 const LEGEND = [
@@ -157,6 +158,9 @@ export default function App() {
         <button className={`tab-btn${tab === "summary" ? " active" : ""}`} onClick={() => setTab("summary")}>
           📊 Summary by Status
         </button>
+        <button className={`tab-btn${tab === "bugs" ? " active" : ""}`} onClick={() => setTab("bugs")}>
+          🐛 Bugs by Feature
+        </button>
       </div>
 
       <main className="dash-main">
@@ -256,6 +260,10 @@ export default function App() {
               </table>
             </div>
           </div>
+        )}
+
+        {tab === "bugs" && (
+          <BugsTab pat={pat} />
         )}
       </main>
 
