@@ -333,14 +333,19 @@ export default function BugsTab({ pat }) {
     return true;
   }, [filters]);
 
+  const kpiBugs = useMemo(() => {
+    if (filters.iteration === "All") return allBugs;
+    return allBugs.filter((b) => shortIteration(b.iterationPath) === filters.iteration);
+  }, [allBugs, filters.iteration]);
+
   const kpiFixed = useMemo(() => ({
-    total:         allBugs.length,
-    new:           allBugs.filter((b) => b.state === "New").length,
-    readyForDev:   allBugs.filter((b) => b.state === "Ready for Dev").length,
-    inProgressDev: allBugs.filter((b) => b.state === "In Progress Dev").length,
-    stageTest:     allBugs.filter((b) => b.state === "Stage Test").length,
-    done:          allBugs.filter((b) => b.state === "Complete/Done").length,
-  }), [allBugs]);
+    total:         kpiBugs.length,
+    new:           kpiBugs.filter((b) => b.state === "New").length,
+    readyForDev:   kpiBugs.filter((b) => b.state === "Ready for Dev").length,
+    inProgressDev: kpiBugs.filter((b) => b.state === "In Progress Dev").length,
+    stageTest:     kpiBugs.filter((b) => b.state === "Stage Test").length,
+    done:          kpiBugs.filter((b) => b.state === "Complete/Done").length,
+  }), [kpiBugs]);
 
   // Group stories by iteration
   const byIteration = useMemo(() => {
