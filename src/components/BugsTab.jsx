@@ -170,6 +170,64 @@ function IterGroup({ iteration, stories, filterFn }) {
   );
 }
 
+// ─── Status Multi-Select ─────────────────────────────────────────────────────
+
+function StatusMultiSelect({ selected, onChange, options }) {
+  const [open, setOpen] = useState(false);
+
+  function toggle(status) {
+    if (selected.includes(status)) {
+      onChange(selected.filter((s) => s !== status));
+    } else {
+      onChange([...selected, status]);
+    }
+  }
+
+  const label = selected.length === 0
+    ? "All Statuses"
+    : selected.length === 1
+      ? selected[0]
+      : `${selected.length} statuses`;
+
+  return (
+    <div className="ms-wrap" style={{ position: "relative" }}>
+      <div
+        className={`ms-trigger${open ? " open" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="ms-label">{label}</span>
+        <span className="ms-arrow">▾</span>
+      </div>
+      {open && (
+        <>
+          <div className="ms-backdrop" onClick={() => setOpen(false)} />
+          <div className="ms-dropdown">
+            {selected.length > 0 && (
+              <button className="ms-clear-btn" onClick={() => { onChange([]); setOpen(false); }}>
+                ✕ Clear
+              </button>
+            )}
+            {options.map((s) => {
+              const cfg = STATUS_CFG[s] || {};
+              const checked = selected.includes(s);
+              return (
+                <label key={s} className={`ms-option${checked ? " checked" : ""}`}>
+                  <input type="checkbox" checked={checked} onChange={() => toggle(s)} />
+                  <span
+                    className="ms-dot"
+                    style={{ background: cfg.bg || "#adb5bd" }}
+                  />
+                  <span>{s}</span>
+                </label>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
 
 function FilterBar({ filters, onChange, options }) {
@@ -179,10 +237,11 @@ function FilterBar({ filters, onChange, options }) {
     <div className="bugs-filter-bar">
       <div className="bugs-filter-group">
         <label className="bugs-filter-lbl">Status</label>
-        <select className="bugs-filter-sel" value={filters.status} onChange={(e) => sel("status", e.target.value)}>
-          <option value="All">All Statuses</option>
-          {options.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <StatusMultiSelect
+          selected={filters.status}
+          onChange={(val) => sel("status", val)}
+          options={options.statuses}
+        />
       </div>
       <div className="bugs-filter-group">
         <label className="bugs-filter-lbl">Priority</label>
@@ -213,10 +272,10 @@ function FilterBar({ filters, onChange, options }) {
           <option value="Content">📝 Content</option>
         </select>
       </div>
-      {Object.values(filters).some((v) => v !== "All") && (
+      {(filters.status.length > 0 || ["priority","iteration","assignee","type"].some((k) => filters[k] !== "All")) && (
         <button
           className="bugs-filter-clear"
-          onClick={() => onChange({ status: "All", priority: "All", iteration: "All", assignee: "All", type: "All" })}
+          onClick={() => onChange({ status: [], priority: "All", iteration: "All", assignee: "All", type: "All" })}
         >
           ✕ Clear Filters
         </button>
@@ -232,7 +291,7 @@ export default function BugsTab({ pat }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [filters, setFilters] = useState({ status: "All", priority: "All", iteration: "All", assignee: "All", type: "All" });
+  const [filters, setFilters] = useState({ status: [], priority: "All", iteration: "All", assignee: "All", type: "All" });
 
   async function handleLoad() {
     const id = parseFeatureId(featureUrl);
@@ -241,7 +300,7 @@ export default function BugsTab({ pat }) {
     try {
       const result = await fetchFeatureBugs(pat, id);
       setData(result);
-      setFilters({ status: "All", priority: "All", iteration: "All", assignee: "All", type: "All" });
+      setFilters({ status: [], priority: "All", iteration: "All", assignee: "All", type: "All" });
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
@@ -266,7 +325,7 @@ export default function BugsTab({ pat }) {
 
   // Filter function applied to each bug
   const filterFn = useMemo(() => (bug) => {
-    if (filters.status    !== "All" && bug.state   !== filters.status)    return false;
+    if (filters.status.length > 0 && !filters.status.includes(bug.state)) return false;
     if (filters.priority  !== "All" && String(bug.priority) !== filters.priority) return false;
     if (filters.iteration !== "All" && shortIteration(bug.iterationPath) !== filters.iteration) return false;
     if (filters.assignee  !== "All" && bug.assignee !== filters.assignee) return false;
