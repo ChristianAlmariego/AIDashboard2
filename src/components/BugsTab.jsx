@@ -5,10 +5,15 @@ import { parseFeatureId, fetchFeatureBugs } from "../api/adoBugs";
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const STATUS_CFG = {
-  "Active":   { color: "#fff",     bg: "#dc3545", border: "#b02a37", icon: "🔴", order: 0 },
-  "New":      { color: "#495057",  bg: "#e9ecef", border: "#adb5bd", icon: "⚪", order: 1 },
-  "Resolved": { color: "#fff",     bg: "#28a745", border: "#1e7e34", icon: "🟢", order: 2 },
-  "Closed":   { color: "#fff",     bg: "#17a2b8", border: "#138496", icon: "🔵", order: 3 },
+  "New":               { color: "#495057", bg: "#e9ecef", border: "#adb5bd", icon: "⚪", order: 0 },
+  "Ready for Dev":     { color: "#fff",    bg: "#0078d4", border: "#005ea2", icon: "🔷", order: 1 },
+  "In Progress Dev":   { color: "#7a5700", bg: "#fff3cd", border: "#f0c040", icon: "🔄", order: 2 },
+  "Stage Test":        { color: "#fff",    bg: "#9b59b6", border: "#7d3c98", icon: "🧪", order: 3 },
+  "Complete/Done":     { color: "#fff",    bg: "#28a745", border: "#1e7e34", icon: "✅", order: 4 },
+  // Fallbacks for any other ADO statuses
+  "Active":            { color: "#fff",    bg: "#dc3545", border: "#b02a37", icon: "🔴", order: 5 },
+  "Resolved":          { color: "#fff",    bg: "#28a745", border: "#1e7e34", icon: "🟢", order: 6 },
+  "Closed":            { color: "#fff",    bg: "#17a2b8", border: "#138496", icon: "🔵", order: 7 },
 };
 
 const PRIORITY_CFG = {
@@ -18,7 +23,10 @@ const PRIORITY_CFG = {
   4: { color: "#fff",     bg: "#6c757d", border: "#545b62", label: "P4", desc: "Low",      order: 4 },
 };
 
-const STATUS_ORDER = { "Active": 0, "New": 1, "Resolved": 2, "Closed": 3 };
+const STATUS_ORDER = {
+  "New": 0, "Ready for Dev": 1, "In Progress Dev": 2, "Stage Test": 3, "Complete/Done": 4,
+  "Active": 5, "Resolved": 6, "Closed": 7,
+};
 
 function sc(state)    { return STATUS_CFG[state]    || { color: "#495057", bg: "#e9ecef", border: "#adb5bd", icon: "⚪", order: 99 }; }
 function pc(priority) { return PRIORITY_CFG[priority] || { color: "#fff", bg: "#6c757d", border: "#545b62", label: `P${priority}`, desc: "", order: 99 }; }
@@ -267,12 +275,12 @@ export default function BugsTab({ pat }) {
   }, [filters]);
 
   const kpiFixed = useMemo(() => ({
-    content:  allBugs.filter((b) => b.category === "Content").length,
-    commerce: allBugs.filter((b) => b.category === "Commerce").length,
-    active:   allBugs.filter((b) => b.state === "Active").length,
-    highPri:  allBugs.filter((b) => b.priority === 1 || b.priority === 2).length,
-    resolved: allBugs.filter((b) => b.state === "Resolved" || b.state === "Closed").length,
-    total:    allBugs.length,
+    total:         allBugs.length,
+    new:           allBugs.filter((b) => b.state === "New").length,
+    readyForDev:   allBugs.filter((b) => b.state === "Ready for Dev").length,
+    inProgressDev: allBugs.filter((b) => b.state === "In Progress Dev").length,
+    stageTest:     allBugs.filter((b) => b.state === "Stage Test").length,
+    done:          allBugs.filter((b) => b.state === "Complete/Done").length,
   }), [allBugs]);
 
   // Group stories by iteration
@@ -331,12 +339,12 @@ export default function BugsTab({ pat }) {
 
           {/* KPI Cards */}
           <div className="kpi-row">
-            <KpiCard label="Total Bugs"          value={kpiFixed.total}    color="#003865" />
-            <KpiCard label="Content Bugs"        value={kpiFixed.content}  color="#6f42c1" sub="📝" />
-            <KpiCard label="Commerce Bugs"       value={kpiFixed.commerce} color="#0078d4" sub="🛒" />
-            <KpiCard label="Active Bugs"         value={kpiFixed.active}   color="#dc3545" />
-            <KpiCard label="High Priority (P1/P2)" value={kpiFixed.highPri} color="#fd7e14" />
-            <KpiCard label="Resolved / Closed"   value={kpiFixed.resolved} color="#28a745" />
+            <KpiCard label="Total Bugs"      value={kpiFixed.total}         color="#003865" />
+            <KpiCard label="New"             value={kpiFixed.new}           color="#6c757d" />
+            <KpiCard label="Ready for Dev"   value={kpiFixed.readyForDev}   color="#0078d4" />
+            <KpiCard label="In Progress Dev" value={kpiFixed.inProgressDev} color="#d39e00" />
+            <KpiCard label="Stage Test"      value={kpiFixed.stageTest}     color="#9b59b6" />
+            <KpiCard label="Complete / Done" value={kpiFixed.done}          color="#28a745" />
           </div>
 
           {/* Filter Bar */}
