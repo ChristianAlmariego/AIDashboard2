@@ -12,7 +12,9 @@ const BUG_FIELDS = [
   "System.AreaPath",
   "Microsoft.VSTS.Common.Priority",
   "Microsoft.VSTS.Common.Severity",
+  "Microsoft.VSTS.Common.ResolvedReason",
   "System.Tags",
+  "System.CreatedDate",
   "System.ChangedDate",
 ].join(",");
 
@@ -129,7 +131,8 @@ function normalize(raw) {
     severity: f["Microsoft.VSTS.Common.Severity"] ?? null,
     storyPoints: f["Microsoft.VSTS.Scheduling.StoryPoints"] ?? null,
     tags: f["System.Tags"] ?? "",
-    changedDate: f["System.ChangedDate"],
+    createdDate: f["System.CreatedDate"] ?? null,
+    changedDate: f["System.ChangedDate"] ?? null,
     url: `https://dev.azure.com/${ORG}/${PROJECT}/_workitems/edit/${raw.id}`,
   };
 }

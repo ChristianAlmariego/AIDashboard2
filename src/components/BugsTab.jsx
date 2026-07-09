@@ -2,155 +2,294 @@ import { useState, useMemo } from "react";
 import { shortIteration } from "../utils/grouping";
 import { parseFeatureId, fetchFeatureBugs } from "../api/adoBugs";
 
-const BUG_STATUS = {
-  "Active":   { bg: "#fde8e8", border: "#dc3545", text: "#721c24", icon: "🐛" },
-  "New":      { bg: "#e9ecef", border: "#adb5bd", text: "#495057", icon: "⬜" },
-  "Resolved": { bg: "#d4edda", border: "#28a745", text: "#155724", icon: "✅" },
-  "Closed":   { bg: "#d1ecf1", border: "#17a2b8", text: "#0c5460", icon: "🔒" },
+// ─── Config ──────────────────────────────────────────────────────────────────
+
+const STATUS_CFG = {
+  "Active":   { color: "#fff",     bg: "#dc3545", border: "#b02a37", icon: "🔴", order: 0 },
+  "New":      { color: "#495057",  bg: "#e9ecef", border: "#adb5bd", icon: "⚪", order: 1 },
+  "Resolved": { color: "#fff",     bg: "#28a745", border: "#1e7e34", icon: "🟢", order: 2 },
+  "Closed":   { color: "#fff",     bg: "#17a2b8", border: "#138496", icon: "🔵", order: 3 },
 };
 
-const PRIORITY = {
-  1: { bg: "#dc3545", text: "#fff", label: "P1 – Critical" },
-  2: { bg: "#fd7e14", text: "#fff", label: "P2 – High" },
-  3: { bg: "#ffc107", text: "#212529", label: "P3 – Medium" },
-  4: { bg: "#6c757d", text: "#fff", label: "P4 – Low" },
+const PRIORITY_CFG = {
+  1: { color: "#fff",     bg: "#dc3545", border: "#b02a37", label: "P1", desc: "Critical", order: 1 },
+  2: { color: "#fff",     bg: "#fd7e14", border: "#d96900", label: "P2", desc: "High",     order: 2 },
+  3: { color: "#212529",  bg: "#ffc107", border: "#d39e00", label: "P3", desc: "Medium",   order: 3 },
+  4: { color: "#fff",     bg: "#6c757d", border: "#545b62", label: "P4", desc: "Low",      order: 4 },
 };
 
-function bugStatus(state) {
-  return BUG_STATUS[state] || { bg: "#e9ecef", border: "#adb5bd", text: "#495057", icon: "⬜" };
+const STATUS_ORDER = { "Active": 0, "New": 1, "Resolved": 2, "Closed": 3 };
+
+function sc(state)    { return STATUS_CFG[state]    || { color: "#495057", bg: "#e9ecef", border: "#adb5bd", icon: "⚪", order: 99 }; }
+function pc(priority) { return PRIORITY_CFG[priority] || { color: "#fff", bg: "#6c757d", border: "#545b62", label: `P${priority}`, desc: "", order: 99 }; }
+
+function sortBugs(bugs) {
+  return [...bugs].sort((a, b) => {
+    const pa = a.priority ?? 99, pb = b.priority ?? 99;
+    if (pa !== pb) return pa - pb;
+    const sa = STATUS_ORDER[a.state] ?? 99, sb = STATUS_ORDER[b.state] ?? 99;
+    if (sa !== sb) return sa - sb;
+    return a.id - b.id;
+  });
 }
 
-function BugRow({ bug }) {
-  const sc = bugStatus(bug.state);
-  const pc = bug.priority ? PRIORITY[bug.priority] : null;
+function fmtDate(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
+// ─── KPI Cards ───────────────────────────────────────────────────────────────
+
+function KpiCard({ label, value, color, sub }) {
   return (
-    <div className="brow" style={{ borderLeftColor: sc.border }}>
-      <span className="brow-icon">{sc.icon}</span>
-      <a href={bug.url} target="_blank" rel="noreferrer" className="brow-title">{bug.title}</a>
-      <span className="brow-id">#{bug.id}</span>
-      <span
-        className="brow-status"
-        style={{ background: sc.bg, color: sc.text, borderColor: sc.border }}
-      >
-        {bug.state}
-      </span>
-      {pc && (
-        <span className="brow-priority" style={{ background: pc.bg, color: pc.text }}>
-          {pc.label}
-        </span>
-      )}
-      {bug.severity && <span className="brow-severity">{bug.severity}</span>}
+    <div className="kpi-card" style={{ borderTopColor: color }}>
+      <div className="kpi-value" style={{ color }}>{value}</div>
+      <div className="kpi-label">{label}</div>
+      {sub != null && <div className="kpi-sub">{sub}</div>}
     </div>
   );
 }
 
-function BugSection({ title, bugs, accentColor }) {
+// ─── Bug Card ────────────────────────────────────────────────────────────────
+
+function BugCard({ bug, storyTitle }) {
+  const s = sc(bug.state);
+  const p = pc(bug.priority);
+  return (
+    <div className="bug-card" style={{ borderLeftColor: p.bg }}>
+      <div className="bug-card-top">
+        <div className="bug-card-badges">
+          <span className="bug-priority-badge" style={{ background: p.bg, color: p.color, borderColor: p.border }}>
+            {p.label} <span className="bug-priority-desc">{p.desc}</span>
+          </span>
+          <span className="bug-status-badge" style={{ background: s.bg, color: s.color, borderColor: s.border }}>
+            {s.icon} {bug.state}
+          </span>
+        </div>
+        <a href={bug.url} target="_blank" rel="noreferrer" className="bug-id-link">#{bug.id}</a>
+      </div>
+
+      <a href={bug.url} target="_blank" rel="noreferrer" className="bug-title">{bug.title}</a>
+
+      <div className="bug-meta-grid">
+        <div className="bug-meta-item"><span className="bug-meta-lbl">Assigned</span><span>{bug.assignee}</span></div>
+        <div className="bug-meta-item"><span className="bug-meta-lbl">Iteration</span><span>{shortIteration(bug.iterationPath) || "—"}</span></div>
+        <div className="bug-meta-item"><span className="bug-meta-lbl">Parent Story</span><span>{storyTitle}</span></div>
+        <div className="bug-meta-item"><span className="bug-meta-lbl">Created</span><span>{fmtDate(bug.createdDate)}</span></div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bug Section (Content / Commerce) ────────────────────────────────────────
+
+function BugSection({ title, bugs, accentColor, icon, storyTitle }) {
   if (!bugs.length) return null;
   return (
-    <div className="bsection">
-      <div className="bsection-hdr" style={{ borderLeftColor: accentColor }}>
-        <span className="bsection-title">{title}</span>
-        <span className="bsection-count">{bugs.length} {bugs.length === 1 ? "bug" : "bugs"}</span>
+    <div className="bug-section">
+      <div className="bug-section-hdr" style={{ color: accentColor, borderBottomColor: accentColor }}>
+        <span className="bug-section-icon">{icon}</span>
+        <span className="bug-section-name">{title} Bugs</span>
+        <span className="bug-section-badge" style={{ background: accentColor }}>{bugs.length}</span>
       </div>
-      <div className="bsection-list">
-        {bugs.map((b) => <BugRow key={b.id} bug={b} />)}
+      <div className="bug-section-list">
+        {bugs.map((b) => <BugCard key={b.id} bug={b} storyTitle={storyTitle} />)}
       </div>
     </div>
   );
 }
 
-function StoryCard({ story }) {
-  const sc = bugStatus(story.state);
-  const pc = story.priority ? PRIORITY[story.priority] : null;
-  const total = story.commerceBugs.length + story.contentBugs.length + story.otherBugs.length;
+// ─── User Story Block ─────────────────────────────────────────────────────────
+
+function StoryBlock({ story, filterFn }) {
+  const filtered = {
+    commerce: sortBugs(story.commerceBugs.filter(filterFn)),
+    content:  sortBugs(story.contentBugs.filter(filterFn)),
+    other:    sortBugs(story.otherBugs.filter(filterFn)),
+  };
+  const total = filtered.commerce.length + filtered.content.length + filtered.other.length;
+  if (total === 0) return null;
+
+  const storyTitle = `#${story.id} ${story.title}`;
 
   return (
-    <div className="story-bug-card" style={{ borderTopColor: sc.border }}>
-      <div className="sbc-header">
-        <div className="sbc-title-row">
-          <a href={story.url} target="_blank" rel="noreferrer" className="sbc-link">
+    <div className="story-block-wrap">
+      <div className="story-block-hdr">
+        <div className="story-block-left">
+          <span className="story-block-icon">📖</span>
+          <a href={story.url} target="_blank" rel="noreferrer" className="story-block-link">
             #{story.id} · {story.title}
           </a>
-          <div className="sbc-badges">
-            <span className="sbc-status" style={{ background: sc.bg, color: sc.text, borderColor: sc.border }}>
-              {story.state}
-            </span>
-            {pc && (
-              <span className="sbc-priority" style={{ background: pc.bg, color: pc.text }}>
-                {pc.label}
-              </span>
-            )}
-          </div>
         </div>
-        <div className="sbc-meta">
-          {story.assignee}
-          {story.iterationPath ? ` · ${shortIteration(story.iterationPath)}` : ""}
-          {" · "}<strong>{total}</strong> {total === 1 ? "bug" : "bugs"}
+        <div className="story-block-right">
+          <span className="story-block-assignee">{story.assignee}</span>
+          <span className="story-bug-count">{total} {total === 1 ? "bug" : "bugs"}</span>
         </div>
       </div>
+      <div className="story-block-body">
+        <BugSection title="Commerce" bugs={filtered.commerce} accentColor="#0078d4" icon="🛒" storyTitle={storyTitle} />
+        <BugSection title="Content"  bugs={filtered.content}  accentColor="#6f42c1" icon="📝" storyTitle={storyTitle} />
+        {filtered.other.length > 0 && (
+          <BugSection title="Other" bugs={filtered.other} accentColor="#6c757d" icon="🔧" storyTitle={storyTitle} />
+        )}
+      </div>
+    </div>
+  );
+}
 
-      {total > 0 ? (
-        <div className="sbc-body">
-          <BugSection title="Commerce" bugs={story.commerceBugs} accentColor="#0078d4" />
-          <BugSection title="Content" bugs={story.contentBugs} accentColor="#6f42c1" />
-          {story.otherBugs.length > 0 && (
-            <BugSection title="Other" bugs={story.otherBugs} accentColor="#6c757d" />
-          )}
-        </div>
-      ) : (
-        <div className="sbc-empty">No bugs linked to this story.</div>
+// ─── Iteration Group ──────────────────────────────────────────────────────────
+
+function IterGroup({ iteration, stories, filterFn }) {
+  const allBugs = stories.flatMap((s) => [
+    ...s.commerceBugs, ...s.contentBugs, ...s.otherBugs,
+  ]).filter(filterFn);
+
+  if (allBugs.length === 0) return null;
+
+  return (
+    <div className="iter-group">
+      <div className="iter-group-hdr">
+        <span className="iter-group-icon">🗓</span>
+        <span className="iter-group-name">{iteration}</span>
+        <span className="iter-group-count">{allBugs.length} {allBugs.length === 1 ? "bug" : "bugs"}</span>
+      </div>
+      <div className="iter-group-body">
+        {stories.map((s) => (
+          <StoryBlock key={s.id} story={s} filterFn={filterFn} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Filter Bar ───────────────────────────────────────────────────────────────
+
+function FilterBar({ filters, onChange, options }) {
+  function sel(key, val) { onChange({ ...filters, [key]: val }); }
+
+  return (
+    <div className="bugs-filter-bar">
+      <div className="bugs-filter-group">
+        <label className="bugs-filter-lbl">Status</label>
+        <select className="bugs-filter-sel" value={filters.status} onChange={(e) => sel("status", e.target.value)}>
+          <option value="All">All Statuses</option>
+          {options.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div className="bugs-filter-group">
+        <label className="bugs-filter-lbl">Priority</label>
+        <select className="bugs-filter-sel" value={filters.priority} onChange={(e) => sel("priority", e.target.value)}>
+          <option value="All">All Priorities</option>
+          {options.priorities.map((p) => <option key={p} value={p}>{PRIORITY_CFG[p]?.label || `P${p}`} – {PRIORITY_CFG[p]?.desc || ""}</option>)}
+        </select>
+      </div>
+      <div className="bugs-filter-group">
+        <label className="bugs-filter-lbl">Iteration</label>
+        <select className="bugs-filter-sel" value={filters.iteration} onChange={(e) => sel("iteration", e.target.value)}>
+          <option value="All">All Iterations</option>
+          {options.iterations.map((i) => <option key={i} value={i}>{i}</option>)}
+        </select>
+      </div>
+      <div className="bugs-filter-group">
+        <label className="bugs-filter-lbl">Assigned To</label>
+        <select className="bugs-filter-sel" value={filters.assignee} onChange={(e) => sel("assignee", e.target.value)}>
+          <option value="All">All Assignees</option>
+          {options.assignees.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+      <div className="bugs-filter-group">
+        <label className="bugs-filter-lbl">Type</label>
+        <select className="bugs-filter-sel" value={filters.type} onChange={(e) => sel("type", e.target.value)}>
+          <option value="All">All Types</option>
+          <option value="Commerce">🛒 Commerce</option>
+          <option value="Content">📝 Content</option>
+        </select>
+      </div>
+      {Object.values(filters).some((v) => v !== "All") && (
+        <button
+          className="bugs-filter-clear"
+          onClick={() => onChange({ status: "All", priority: "All", iteration: "All", assignee: "All", type: "All" })}
+        >
+          ✕ Clear Filters
+        </button>
       )}
     </div>
   );
 }
+
+// ─── Main BugsTab ─────────────────────────────────────────────────────────────
 
 export default function BugsTab({ pat }) {
   const [featureUrl, setFeatureUrl] = useState("");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [iterationFilter, setIterationFilter] = useState("All");
+  const [filters, setFilters] = useState({ status: "All", priority: "All", iteration: "All", assignee: "All", type: "All" });
 
   async function handleLoad() {
     const id = parseFeatureId(featureUrl);
-    if (!id) { setError("Could not parse a work item ID from the URL. Paste the full ADO URL or just the numeric ID."); return; }
-    setLoading(true);
-    setError(null);
-    setData(null);
+    if (!id) { setError("Could not parse a work item ID. Paste the full ADO Feature URL or just the numeric ID."); return; }
+    setLoading(true); setError(null); setData(null);
     try {
       const result = await fetchFeatureBugs(pat, id);
       setData(result);
-      setIterationFilter("All");
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+      setFilters({ status: "All", priority: "All", iteration: "All", assignee: "All", type: "All" });
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
   }
 
-  const iterations = useMemo(() => {
+  // All bugs flat
+  const allBugs = useMemo(() => {
     if (!data) return [];
-    const set = new Set(data.stories.map((s) => shortIteration(s.iterationPath)).filter(Boolean));
-    return [...set].sort();
+    return data.stories.flatMap((s) => [
+      ...s.commerceBugs.map((b) => ({ ...b, category: "Commerce", storyTitle: s.title })),
+      ...s.contentBugs.map((b) => ({ ...b, category: "Content",  storyTitle: s.title })),
+      ...s.otherBugs.map((b) => ({ ...b, category: "Other",    storyTitle: s.title })),
+    ]);
   }, [data]);
 
+  // Filter options derived from all bugs
+  const options = useMemo(() => ({
+    statuses:   [...new Set(allBugs.map((b) => b.state))].sort((a, b) => (STATUS_ORDER[a] ?? 99) - (STATUS_ORDER[b] ?? 99)),
+    priorities: [...new Set(allBugs.map((b) => b.priority).filter(Boolean))].sort((a, b) => a - b),
+    iterations: [...new Set(allBugs.map((b) => shortIteration(b.iterationPath)).filter(Boolean))].sort(),
+    assignees:  [...new Set(allBugs.map((b) => b.assignee).filter((a) => a !== "Unassigned"))].sort(),
+  }), [allBugs]);
+
+  // Filter function applied to each bug
+  const filterFn = useMemo(() => (bug) => {
+    if (filters.status    !== "All" && bug.state   !== filters.status)    return false;
+    if (filters.priority  !== "All" && String(bug.priority) !== filters.priority) return false;
+    if (filters.iteration !== "All" && shortIteration(bug.iterationPath) !== filters.iteration) return false;
+    if (filters.assignee  !== "All" && bug.assignee !== filters.assignee) return false;
+    if (filters.type !== "All" && bug.category !== filters.type) return false;
+    return true;
+  }, [filters]);
+
+  const kpiFixed = useMemo(() => ({
+    content:  allBugs.filter((b) => b.category === "Content").length,
+    commerce: allBugs.filter((b) => b.category === "Commerce").length,
+    active:   allBugs.filter((b) => b.state === "Active").length,
+    highPri:  allBugs.filter((b) => b.priority === 1 || b.priority === 2).length,
+    resolved: allBugs.filter((b) => b.state === "Resolved" || b.state === "Closed").length,
+    total:    allBugs.length,
+  }), [allBugs]);
+
+  // Group stories by iteration
   const byIteration = useMemo(() => {
     if (!data) return [];
-    const stories = iterationFilter === "All"
-      ? data.stories
-      : data.stories.filter((s) => shortIteration(s.iterationPath) === iterationFilter);
     const map = new Map();
-    for (const s of stories) {
-      const key = shortIteration(s.iterationPath) || "No Iteration";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(s);
+    for (const s of data.stories) {
+      const it = shortIteration(s.iterationPath) || "No Iteration";
+      if (!map.has(it)) map.set(it, []);
+      map.get(it).push(s);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [data, iterationFilter]);
+  }, [data]);
 
   return (
     <div className="bugs-tab">
+      {/* Feature Input */}
       <div className="bugs-feature-bar">
         <label className="bugs-input-label">Feature Link</label>
         <div className="bugs-input-row">
@@ -162,11 +301,7 @@ export default function BugsTab({ pat }) {
             onChange={(e) => setFeatureUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !loading && featureUrl.trim() && handleLoad()}
           />
-          <button
-            className="dash-btn"
-            onClick={handleLoad}
-            disabled={loading || !featureUrl.trim()}
-          >
+          <button className="dash-btn" onClick={handleLoad} disabled={loading || !featureUrl.trim()}>
             {loading ? "Loading…" : "Load Feature"}
           </button>
         </div>
@@ -175,50 +310,47 @@ export default function BugsTab({ pat }) {
 
       {!data && !loading && (
         <div className="bugs-placeholder">
-          Enter a Feature URL or ID above to view its user stories and bugs grouped by iteration.
+          Enter a Feature URL or ID above to view its user stories and bugs, organized by iteration.
         </div>
       )}
 
       {data && (
         <>
+          {/* Feature Header */}
           <div className="bugs-feature-header">
-            <a href={data.feature.url} target="_blank" rel="noreferrer" className="bugs-feature-link">
-              📦 {data.feature.title}
-            </a>
+            <div className="bugs-feature-title-row">
+              <span className="bugs-feature-badge">FEATURE</span>
+              <a href={data.feature.url} target="_blank" rel="noreferrer" className="bugs-feature-link">
+                #{data.feature.id} · {data.feature.title}
+              </a>
+            </div>
             <span className="bugs-feature-meta">
-              Feature #{data.feature.id} · {data.stories.length} user {data.stories.length === 1 ? "story" : "stories"}
+              {data.stories.length} user {data.stories.length === 1 ? "story" : "stories"} · {kpiFixed.total} {kpiFixed.total === 1 ? "bug" : "bugs"} total
             </span>
           </div>
 
-          {iterations.length > 1 && (
-            <div className="bugs-iter-bar">
-              {["All", ...iterations].map((it) => (
-                <button
-                  key={it}
-                  className={`iter-chip${iterationFilter === it ? " active" : ""}`}
-                  onClick={() => setIterationFilter(it)}
-                >
-                  {it}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* KPI Cards */}
+          <div className="kpi-row">
+            <KpiCard label="Total Bugs"          value={kpiFixed.total}    color="#003865" />
+            <KpiCard label="Content Bugs"        value={kpiFixed.content}  color="#6f42c1" sub="📝" />
+            <KpiCard label="Commerce Bugs"       value={kpiFixed.commerce} color="#0078d4" sub="🛒" />
+            <KpiCard label="Active Bugs"         value={kpiFixed.active}   color="#dc3545" />
+            <KpiCard label="High Priority (P1/P2)" value={kpiFixed.highPri} color="#fd7e14" />
+            <KpiCard label="Resolved / Closed"   value={kpiFixed.resolved} color="#28a745" />
+          </div>
 
-          {byIteration.length === 0 && (
-            <div className="empty-state">No user stories found for this feature.</div>
-          )}
+          {/* Filter Bar */}
+          <FilterBar filters={filters} onChange={setFilters} options={options} />
 
-          {byIteration.map(([iteration, stories]) => (
-            <div key={iteration} className="bugs-iter-group">
-              <div className="bugs-iter-label">
-                🗓 {iteration}
-                <span className="bugs-iter-count">{stories.length} {stories.length === 1 ? "story" : "stories"}</span>
-              </div>
-              <div className="bugs-story-list">
-                {stories.map((s) => <StoryCard key={s.id} story={s} />)}
-              </div>
-            </div>
-          ))}
+          {/* Hierarchy */}
+          <div className="bugs-hierarchy">
+            {byIteration.map(([iteration, stories]) => (
+              <IterGroup key={iteration} iteration={iteration} stories={stories} filterFn={filterFn} />
+            ))}
+            {byIteration.length === 0 && (
+              <div className="empty-state">No user stories found under this feature.</div>
+            )}
+          </div>
         </>
       )}
     </div>
