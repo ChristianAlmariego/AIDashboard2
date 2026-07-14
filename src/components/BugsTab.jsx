@@ -63,8 +63,9 @@ function KpiCard({ label, value, color, sub }) {
 function BugCard({ bug, storyTitle }) {
   const s = sc(bug.state);
   const p = pc(bug.priority);
+  const isReleaseBlocker = bug.tags?.toLowerCase().split(/[;,]/).map((t) => t.trim()).includes("release_blocker");
   return (
-    <div className="bug-card" style={{ borderLeftColor: p.bg }}>
+    <div className="bug-card" style={{ borderLeftColor: isReleaseBlocker ? "#b02a37" : p.bg }}>
       <div className="bug-card-top">
         <div className="bug-card-badges">
           <span className="bug-priority-badge" style={{ background: p.bg, color: p.color, borderColor: p.border }}>
@@ -73,6 +74,9 @@ function BugCard({ bug, storyTitle }) {
           <span className="bug-status-badge" style={{ background: s.bg, color: s.color, borderColor: s.border }}>
             {s.icon} {bug.state}
           </span>
+          {isReleaseBlocker && (
+            <span className="bug-release-blocker">🚨 Release Blocker</span>
+          )}
         </div>
         <a href={bug.url} target="_blank" rel="noreferrer" className="bug-id-link">#{bug.id}</a>
       </div>

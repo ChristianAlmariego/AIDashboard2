@@ -803,6 +803,26 @@ body {
   white-space: nowrap;
 }
 
+.bug-release-blocker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 5px;
+  border: 2px solid #b02a37;
+  background: #dc3545;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  animation: blocker-pulse 2s ease-in-out infinite;
+}
+@keyframes blocker-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,53,69,0.5); }
+  50%       { box-shadow: 0 0 0 5px rgba(220,53,69,0); }
+}
+
 .bug-id-link {
   font-size: 12px;
   font-family: monospace;
