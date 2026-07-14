@@ -599,6 +599,10 @@ body {
   text-align: center;
 }
 .kpi-sub { font-size: 16px; margin-top: 4px; }
+.kpi-card-blocker {
+  border: 2px solid #dc3545;
+  animation: blocker-pulse 2s ease-in-out infinite;
+}
 
 /* Filter bar */
 .bugs-filter-bar {

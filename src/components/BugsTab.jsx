@@ -48,11 +48,14 @@ function fmtDate(iso) {
 
 // ─── KPI Cards ───────────────────────────────────────────────────────────────
 
-function KpiCard({ label, value, color, sub }) {
+function KpiCard({ label, value, color, sub, blocker }) {
   return (
-    <div className="kpi-card" style={{ borderTopColor: color }}>
+    <div
+      className={`kpi-card${blocker ? " kpi-card-blocker" : ""}`}
+      style={{ borderTopColor: color, ...(blocker ? { background: "#fff5f5" } : {}) }}
+    >
       <div className="kpi-value" style={{ color }}>{value}</div>
-      <div className="kpi-label">{label}</div>
+      <div className="kpi-label" style={blocker ? { color: "#dc3545", fontWeight: 800 } : {}}>{label}</div>
       {sub != null && <div className="kpi-sub">{sub}</div>}
     </div>
   );
@@ -342,6 +345,8 @@ export default function BugsTab({ pat }) {
     return allBugs.filter((b) => shortIteration(b.iterationPath) === filters.iteration);
   }, [allBugs, filters.iteration]);
 
+  const isBlocker = (b) => b.tags?.toLowerCase().split(/[;,]/).map((t) => t.trim()).includes("release_blocker");
+
   const kpiFixed = useMemo(() => ({
     total:         kpiBugs.length,
     new:           kpiBugs.filter((b) => b.state === "New").length,
@@ -349,6 +354,7 @@ export default function BugsTab({ pat }) {
     inProgressDev: kpiBugs.filter((b) => b.state === "In Progress Dev").length,
     stageTest:     kpiBugs.filter((b) => b.state === "Stage Test").length,
     done:          kpiBugs.filter((b) => b.state === "Complete/Done").length,
+    releaseBlocker: kpiBugs.filter(isBlocker).length,
   }), [kpiBugs]);
 
   // Group stories by iteration
@@ -407,12 +413,13 @@ export default function BugsTab({ pat }) {
 
           {/* KPI Cards */}
           <div className="kpi-row">
-            <KpiCard label="Total Bugs"      value={kpiFixed.total}         color="#003865" />
-            <KpiCard label="New"             value={kpiFixed.new}           color="#6c757d" />
-            <KpiCard label="Ready for Dev"   value={kpiFixed.readyForDev}   color="#0078d4" />
-            <KpiCard label="In Progress Dev" value={kpiFixed.inProgressDev} color="#d39e00" />
-            <KpiCard label="Stage Test"      value={kpiFixed.stageTest}     color="#9b59b6" />
-            <KpiCard label="Complete / Done" value={kpiFixed.done}          color="#28a745" />
+            <KpiCard label="Total Bugs"      value={kpiFixed.total}          color="#003865" />
+            <KpiCard label="New"             value={kpiFixed.new}            color="#6c757d" />
+            <KpiCard label="Ready for Dev"   value={kpiFixed.readyForDev}    color="#0078d4" />
+            <KpiCard label="In Progress Dev" value={kpiFixed.inProgressDev}  color="#d39e00" />
+            <KpiCard label="Stage Test"      value={kpiFixed.stageTest}      color="#9b59b6" />
+            <KpiCard label="Complete / Done" value={kpiFixed.done}           color="#28a745" />
+            <KpiCard label="🚨 Release Blocker" value={kpiFixed.releaseBlocker} color="#dc3545" blocker />
           </div>
 
           {/* Filter Bar */}
