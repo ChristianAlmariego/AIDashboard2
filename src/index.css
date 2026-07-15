@@ -320,6 +320,36 @@ body {
 .sum-total-num { font-size: 28px; font-weight: 700; line-height: 1; }
 .sum-total-lbl { font-size: 10px; color: #57606a; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; text-align: center; }
 
+/* ---- Summary toolbar / toggle ---- */
+.sum-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; margin-bottom: 12px;
+  background: #fff; border: 1px solid #d0d7de; border-radius: 8px;
+}
+.sum-toggle-label {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; font-size: 13px; font-weight: 600; color: #24292f;
+  user-select: none;
+}
+.sum-toggle-input { position: absolute; opacity: 0; width: 0; height: 0; }
+.sum-toggle-track {
+  position: relative; display: inline-block;
+  width: 36px; height: 20px; border-radius: 10px;
+  background: #d0d7de; transition: background 0.2s;
+  flex-shrink: 0;
+}
+.sum-toggle-input:checked + .sum-toggle-track { background: #0078d4; }
+.sum-toggle-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: left 0.2s;
+}
+.sum-toggle-input:checked + .sum-toggle-track .sum-toggle-thumb { left: 18px; }
+.sum-toggle-hint {
+  font-size: 12px; color: #0078d4; font-style: italic;
+}
+
 .sum-table-wrap {
   background: #fff;
   border: 1px solid #d0d7de;

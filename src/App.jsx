@@ -40,6 +40,7 @@ export default function App() {
   const [stateFilter, setStateFilter] = useState("All");
   const [iterationFilter, setIterationFilter] = useState("All");
   const [tab, setTab] = useState("dashboard");
+  const [featureRelatedOnly, setFeatureRelatedOnly] = useState(false);
 
   const { stories, loading, error, lastRefresh, load } = useAdoData();
 
@@ -81,9 +82,14 @@ export default function App() {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
+  const summaryFiltered = useMemo(() => {
+    if (!featureRelatedOnly) return filtered;
+    return filtered.filter((s) => s.title.startsWith("QA: "));
+  }, [filtered, featureRelatedOnly]);
+
   const statusGroups = useMemo(() => {
     const map = new Map();
-    for (const story of filtered) {
+    for (const story of summaryFiltered) {
       const key = story.state || "Unknown";
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(story);
@@ -96,7 +102,7 @@ export default function App() {
       return av - bv;
     });
     return sorted;
-  }, [filtered]);
+  }, [summaryFiltered]);
 
   const todayStr = new Date().toLocaleDateString("en-US", {
     year: "numeric", month: "long", day: "numeric",
@@ -192,9 +198,26 @@ export default function App() {
 
         {!loading && !error && stories.length > 0 && tab === "summary" && (
           <div className="summary-view">
+            <div className="sum-toolbar">
+              <label className="sum-toggle-label">
+                <input
+                  type="checkbox"
+                  className="sum-toggle-input"
+                  checked={featureRelatedOnly}
+                  onChange={(e) => setFeatureRelatedOnly(e.target.checked)}
+                />
+                <span className="sum-toggle-track">
+                  <span className="sum-toggle-thumb" />
+                </span>
+                Feature Related
+              </label>
+              {featureRelatedOnly && (
+                <span className="sum-toggle-hint">Showing stories with title starting with "QA: "</span>
+              )}
+            </div>
             <div className="summary-totals">
               <div className="sum-total-tile">
-                <div className="sum-total-num">{filtered.length}</div>
+                <div className="sum-total-num">{summaryFiltered.length}</div>
                 <div className="sum-total-lbl">Total Stories</div>
               </div>
               {statusGroups.map(([status, items]) => {
