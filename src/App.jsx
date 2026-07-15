@@ -84,7 +84,7 @@ export default function App() {
 
   const summaryFiltered = useMemo(() => {
     if (!featureRelatedOnly) return filtered;
-    return filtered.filter((s) => s.title.startsWith("QA: "));
+    return filtered.filter((s) => /^QA\s*:\s*/i.test(s.title));
   }, [filtered, featureRelatedOnly]);
 
   const statusGroups = useMemo(() => {
