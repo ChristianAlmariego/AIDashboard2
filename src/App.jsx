@@ -222,9 +222,13 @@ export default function App() {
               </div>
               {statusGroups.map(([status, items]) => {
                 const col = STATUS_COLORS[status] || { bg: "#e9ecef", border: "#adb5bd", text: "#495057" };
+                const pct = summaryFiltered.length > 0
+                  ? Math.round((items.length / summaryFiltered.length) * 100)
+                  : 0;
                 return (
                   <div key={status} className="sum-total-tile" style={{ borderTopColor: col.border }}>
                     <div className="sum-total-num" style={{ color: col.text }}>{items.length}</div>
+                    <div className="sum-total-pct" style={{ color: col.text }}>{pct}%</div>
                     <div className="sum-total-lbl">{status}</div>
                   </div>
                 );

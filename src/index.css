@@ -318,6 +318,7 @@ body {
   align-items: center;
 }
 .sum-total-num { font-size: 28px; font-weight: 700; line-height: 1; }
+.sum-total-pct { font-size: 12px; font-weight: 500; opacity: 0.75; margin-top: 2px; text-align: center; }
 .sum-total-lbl { font-size: 10px; color: #57606a; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; text-align: center; }
 
 /* ---- Summary toolbar / toggle ---- */
