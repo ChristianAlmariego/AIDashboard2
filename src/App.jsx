@@ -165,7 +165,7 @@ export default function App() {
           📊 Summary by Status
         </button>
         <button className={`tab-btn${tab === "bugs" ? " active" : ""}`} onClick={() => setTab("bugs")}>
-          🐛 Bugs by Feature
+          🐛 Bugs
         </button>
       </div>
 

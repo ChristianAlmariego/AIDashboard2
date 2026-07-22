@@ -347,15 +347,21 @@ export default function BugsTab({ pat }) {
 
   const isBlocker = (b) => b.tags?.toLowerCase().split(/[;,]/).map((t) => t.trim()).includes("release_blocker");
 
-  const kpiFixed = useMemo(() => ({
-    total:         kpiBugs.length,
-    new:           kpiBugs.filter((b) => b.state === "New").length,
-    readyForDev:   kpiBugs.filter((b) => b.state === "Ready for Dev").length,
-    inProgressDev: kpiBugs.filter((b) => b.state === "In Progress Dev").length,
-    stageTest:     kpiBugs.filter((b) => b.state === "Stage Test").length,
-    done:          kpiBugs.filter((b) => b.state === "Complete/Done").length,
-    releaseBlocker: kpiBugs.filter(isBlocker).length,
-  }), [kpiBugs]);
+  const kpiFixed = useMemo(() => {
+    const byStatus = {};
+    for (const b of kpiBugs) {
+      byStatus[b.state] = (byStatus[b.state] || 0) + 1;
+    }
+    // Ordered list of statuses present in the data
+    const statusList = [...new Set(allBugs.map((b) => b.state))]
+      .sort((a, b) => (STATUS_ORDER[a] ?? 99) - (STATUS_ORDER[b] ?? 99));
+    return {
+      total: kpiBugs.length,
+      releaseBlocker: kpiBugs.filter(isBlocker).length,
+      byStatus,
+      statusList,
+    };
+  }, [kpiBugs, allBugs]);
 
   // Group stories by iteration
   const byIteration = useMemo(() => {
@@ -413,12 +419,18 @@ export default function BugsTab({ pat }) {
 
           {/* KPI Cards */}
           <div className="kpi-row">
-            <KpiCard label="Total Bugs"      value={kpiFixed.total}          color="#003865" />
-            <KpiCard label="New"             value={kpiFixed.new}            color="#6c757d" />
-            <KpiCard label="Ready for Dev"   value={kpiFixed.readyForDev}    color="#0078d4" />
-            <KpiCard label="In Progress Dev" value={kpiFixed.inProgressDev}  color="#d39e00" />
-            <KpiCard label="Stage Test"      value={kpiFixed.stageTest}      color="#9b59b6" />
-            <KpiCard label="Complete / Done" value={kpiFixed.done}           color="#28a745" />
+            <KpiCard label="Total Bugs" value={kpiFixed.total} color="#003865" />
+            {kpiFixed.statusList.map((status) => {
+              const cfg = sc(status);
+              return (
+                <KpiCard
+                  key={status}
+                  label={status}
+                  value={kpiFixed.byStatus[status] || 0}
+                  color={cfg.border || cfg.bg}
+                />
+              );
+            })}
             <KpiCard label="🚨 Release Blocker" value={kpiFixed.releaseBlocker} color="#dc3545" blocker />
           </div>
 
