@@ -4,6 +4,7 @@ import { shortIteration } from "./utils/grouping";
 import LoginPanel from "./components/LoginPanel";
 import AssigneeCard from "./components/AssigneeCard";
 import BugsTab from "./components/BugsTab";
+import VelocityTab from "./components/VelocityTab";
 import "./App.css";
 
 const LEGEND = [
@@ -167,6 +168,9 @@ export default function App() {
         <button className={`tab-btn${tab === "bugs" ? " active" : ""}`} onClick={() => setTab("bugs")}>
           🐛 Bugs
         </button>
+        <button className={`tab-btn${tab === "velocity" ? " active" : ""}`} onClick={() => setTab("velocity")}>
+          ⚡ Velocity
+        </button>
       </div>
 
       <main className="dash-main">
@@ -290,6 +294,10 @@ export default function App() {
         )}
 
         {tab === "bugs" && <BugsTab pat={pat} />}
+
+        {!loading && !error && tab === "velocity" && (
+          <VelocityTab stories={filtered} />
+        )}
       </main>
 
       <footer className="dash-footer">
