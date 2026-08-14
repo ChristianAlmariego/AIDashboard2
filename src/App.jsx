@@ -73,6 +73,24 @@ export default function App() {
     return result;
   }, [stories, stateFilter, iterationFilter, search]);
 
+  // Velocity tab: all stories filtered by iteration + search only (not state)
+  const velocityStories = useMemo(() => {
+    let result = stories;
+    if (iterationFilter !== "All")
+      result = result.filter((s) => shortIteration(s.iterationPath) === iterationFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.title.toLowerCase().includes(q) ||
+          s.assignee.toLowerCase().includes(q) ||
+          String(s.id).includes(q) ||
+          s.tags.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [stories, iterationFilter, search]);
+
   const assigneeGroups = useMemo(() => {
     const map = new Map();
     for (const story of filtered) {
@@ -296,7 +314,7 @@ export default function App() {
         {tab === "bugs" && <BugsTab pat={pat} />}
 
         {!loading && !error && tab === "velocity" && (
-          <VelocityTab stories={filtered} />
+          <VelocityTab stories={velocityStories} />
         )}
       </main>
 

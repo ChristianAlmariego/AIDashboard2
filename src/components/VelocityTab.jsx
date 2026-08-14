@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { shortIteration } from "../utils/grouping";
 
+const DONE_STATES = new Set(["Complete/Done", "Closed"]);
+
 const STATE_COLORS = {
   "New":                      { bg: "#e9ecef", border: "#adb5bd", text: "#495057" },
   "In Progress Dev":          { bg: "#fff3cd", border: "#f0c040", text: "#7a5700" },
@@ -18,10 +20,13 @@ function stateCfg(state) {
   return STATE_COLORS[state] || { bg: "#e9ecef", border: "#adb5bd", text: "#495057" };
 }
 
+function pts(list) { return list.reduce((s, x) => s + (x.storyPoints ?? 0), 0); }
+
 function StoryRow({ story }) {
   const cfg = stateCfg(story.state);
+  const isDone = DONE_STATES.has(story.state);
   return (
-    <tr className="vel-story-row">
+    <tr className={`vel-story-row${isDone ? " vel-story-done" : " vel-story-open"}`}>
       <td>
         <a href={story.url} target="_blank" rel="noreferrer" className="vel-id-link">
           #{story.id}
@@ -43,14 +48,25 @@ function StoryRow({ story }) {
 }
 
 function IterationBlock({ iteration, stories }) {
-  const pts = stories.reduce((s, x) => s + (x.storyPoints ?? 0), 0);
+  const donePts   = pts(stories.filter((s) => DONE_STATES.has(s.state)));
+  const openPts   = pts(stories.filter((s) => !DONE_STATES.has(s.state)));
+  const totalPts  = pts(stories);
+
+  // Sort: open first, then done
+  const sorted = [...stories].sort((a, b) => {
+    const ad = DONE_STATES.has(a.state) ? 1 : 0;
+    const bd = DONE_STATES.has(b.state) ? 1 : 0;
+    return ad - bd;
+  });
+
   return (
     <div className="vel-iter-block">
       <div className="vel-iter-hdr">
         <span className="vel-iter-name">🗓 {iteration}</span>
         <span className="vel-iter-meta">
           {stories.length} {stories.length === 1 ? "story" : "stories"}
-          {pts > 0 && <> · <strong>{pts} pts</strong></>}
+          {donePts > 0 && <> · <span className="vel-iter-done">{donePts} velocity pts</span></>}
+          {openPts > 0 && <> · <span className="vel-iter-open">{openPts} unclosed pts</span></>}
         </span>
       </div>
       <table className="vel-table">
@@ -69,19 +85,17 @@ function IterationBlock({ iteration, stories }) {
           </tr>
         </thead>
         <tbody>
-          {stories.map((s) => <StoryRow key={s.id} story={s} />)}
+          {sorted.map((s) => <StoryRow key={s.id} story={s} />)}
         </tbody>
       </table>
     </div>
   );
 }
 
-function MemberCard({ name, stories, iterations }) {
-  const totalPts = stories.reduce((s, x) => s + (x.storyPoints ?? 0), 0);
+function MemberCard({ name, stories }) {
+  const velocityPts = pts(stories.filter((s) => DONE_STATES.has(s.state)));
+  const unclosedPts = pts(stories.filter((s) => !DONE_STATES.has(s.state)));
   const totalStories = stories.length;
-  const completedPts = stories
-    .filter((s) => ["Complete/Done", "Closed"].includes(s.state))
-    .reduce((s, x) => s + (x.storyPoints ?? 0), 0);
 
   const byIteration = useMemo(() => {
     const map = new Map();
@@ -107,17 +121,17 @@ function MemberCard({ name, stories, iterations }) {
         <div className="vel-member-info">
           <div className="vel-member-name">{name}</div>
           <div className="vel-member-sub">
-            {totalStories} {totalStories === 1 ? "story" : "stories"} · {totalPts} total pts
+            {totalStories} {totalStories === 1 ? "story" : "stories"}
           </div>
         </div>
         <div className="vel-member-kpis">
           <div className="vel-kpi">
-            <span className="vel-kpi-val">{totalPts}</span>
-            <span className="vel-kpi-lbl">Total Pts</span>
+            <span className="vel-kpi-val" style={{ color: "#28a745" }}>{velocityPts}</span>
+            <span className="vel-kpi-lbl">Velocity Pts</span>
           </div>
-          <div className="vel-kpi">
-            <span className="vel-kpi-val" style={{ color: "#28a745" }}>{completedPts}</span>
-            <span className="vel-kpi-lbl">Done Pts</span>
+          <div className="vel-kpi vel-kpi-divider">
+            <span className="vel-kpi-val" style={{ color: "#d39e00" }}>{unclosedPts}</span>
+            <span className="vel-kpi-lbl">Unclosed Pts</span>
           </div>
           <div className="vel-kpi">
             <span className="vel-kpi-val" style={{ color: "#0078d4" }}>{totalStories}</span>
@@ -145,7 +159,8 @@ export default function VelocityTab({ stories }) {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [stories]);
 
-  const grandTotal = stories.reduce((s, x) => s + (x.storyPoints ?? 0), 0);
+  const totalVelocityPts = pts(stories.filter((s) => DONE_STATES.has(s.state)));
+  const totalUnclosedPts = pts(stories.filter((s) => !DONE_STATES.has(s.state)));
 
   const iterations = useMemo(() => {
     const set = new Set(stories.map((s) => shortIteration(s.iterationPath)).filter(Boolean));
@@ -164,9 +179,15 @@ export default function VelocityTab({ stories }) {
           <span className="vel-summary-val">{stories.length}</span>
           <span className="vel-summary-lbl">Total Stories</span>
         </div>
-        <div className="vel-summary-tile" style={{ borderTopColor: "#0078d4" }}>
-          <span className="vel-summary-val" style={{ color: "#0078d4" }}>{grandTotal}</span>
-          <span className="vel-summary-lbl">Total Story Points</span>
+        <div className="vel-summary-tile" style={{ borderTopColor: "#28a745" }}>
+          <span className="vel-summary-val" style={{ color: "#28a745" }}>{totalVelocityPts}</span>
+          <span className="vel-summary-lbl">Velocity Pts</span>
+          <span className="vel-summary-sub">closed / done</span>
+        </div>
+        <div className="vel-summary-tile" style={{ borderTopColor: "#d39e00" }}>
+          <span className="vel-summary-val" style={{ color: "#d39e00" }}>{totalUnclosedPts}</span>
+          <span className="vel-summary-lbl">Unclosed Pts</span>
+          <span className="vel-summary-sub">in progress / open</span>
         </div>
         <div className="vel-summary-tile" style={{ borderTopColor: "#9b59b6" }}>
           <span className="vel-summary-val" style={{ color: "#9b59b6" }}>{byMember.length}</span>
