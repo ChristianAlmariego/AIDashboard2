@@ -5,6 +5,7 @@ import LoginPanel from "./components/LoginPanel";
 import AssigneeCard from "./components/AssigneeCard";
 import BugsTab from "./components/BugsTab";
 import VelocityTab from "./components/VelocityTab";
+import CapacityTab from "./components/CapacityTab";
 import "./App.css";
 
 const LEGEND = [
@@ -189,6 +190,9 @@ export default function App() {
         <button className={`tab-btn${tab === "velocity" ? " active" : ""}`} onClick={() => setTab("velocity")}>
           ⚡ Velocity
         </button>
+        <button className={`tab-btn${tab === "capacity" ? " active" : ""}`} onClick={() => setTab("capacity")}>
+          📈 Capacity
+        </button>
       </div>
 
       <main className="dash-main">
@@ -312,6 +316,8 @@ export default function App() {
         )}
 
         {tab === "bugs" && <BugsTab pat={pat} />}
+
+        {tab === "capacity" && <CapacityTab />}
 
         {!loading && !error && tab === "velocity" && (
           <VelocityTab stories={velocityStories} />
