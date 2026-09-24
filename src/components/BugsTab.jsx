@@ -336,7 +336,7 @@ export default function BugsTab({ pat }) {
     priorities: [...new Set(allBugs.map((b) => b.priority).filter(Boolean))].sort((a, b) => a - b),
     iterations: [...new Set(allBugs.map((b) => shortIteration(b.iterationPath)).filter(Boolean))].sort(),
     assignees:    [...new Set(allBugs.map((b) => b.assignee).filter((a) => a !== "Unassigned"))].sort(),
-    environments: [...new Set(allBugs.map((b) => b.environment).filter(Boolean))].sort(),
+    environments: ["ALL","DEV","DEV + QA","DEV + QA + STAGE","DEV + STAGE","PROD","QA","QA + STAGE","STAGE"],
   }), [allBugs]);
 
   // Filter function applied to each bug
@@ -346,7 +346,11 @@ export default function BugsTab({ pat }) {
     if (filters.iteration !== "All" && shortIteration(bug.iterationPath) !== filters.iteration) return false;
     if (filters.assignee  !== "All" && bug.assignee !== filters.assignee) return false;
     if (filters.type !== "All" && bug.category !== filters.type) return false;
-    if (filters.environment !== "All" && bug.environment !== filters.environment) return false;
+    if (filters.environment !== "All") {
+      const env = bug.environment ?? "";
+      if (filters.environment === "ALL") { /* show all */ }
+      else if (env !== filters.environment) return false;
+    }
     return true;
   }, [filters]);
 
