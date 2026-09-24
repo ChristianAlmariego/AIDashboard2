@@ -279,10 +279,17 @@ function FilterBar({ filters, onChange, options }) {
           <option value="Content">📝 Content</option>
         </select>
       </div>
-      {(filters.status.length > 0 || ["priority","iteration","assignee","type"].some((k) => filters[k] !== "All")) && (
+      <div className="bugs-filter-group">
+        <label className="bugs-filter-lbl">Affected Environment</label>
+        <select className="bugs-filter-sel" value={filters.environment} onChange={(e) => sel("environment", e.target.value)}>
+          <option value="All">All Environments</option>
+          {options.environments.map((env) => <option key={env} value={env}>{env}</option>)}
+        </select>
+      </div>
+      {(filters.status.length > 0 || ["priority","iteration","assignee","type","environment"].some((k) => filters[k] !== "All")) && (
         <button
           className="bugs-filter-clear"
-          onClick={() => onChange({ status: [], priority: "All", iteration: "All", assignee: "All", type: "All" })}
+          onClick={() => onChange({ status: [], priority: "All", iteration: "All", assignee: "All", type: "All", environment: "All" })}
         >
           ✕ Clear Filters
         </button>
@@ -298,7 +305,7 @@ export default function BugsTab({ pat }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [filters, setFilters] = useState({ status: [], priority: "All", iteration: "All", assignee: "All", type: "All" });
+  const [filters, setFilters] = useState({ status: [], priority: "All", iteration: "All", assignee: "All", type: "All", environment: "All" });
 
   async function handleLoad() {
     const id = parseFeatureId(featureUrl);
@@ -307,7 +314,7 @@ export default function BugsTab({ pat }) {
     try {
       const result = await fetchFeatureBugs(pat, id);
       setData(result);
-      setFilters({ status: [], priority: "All", iteration: "All", assignee: "All", type: "All" });
+      setFilters({ status: [], priority: "All", iteration: "All", assignee: "All", type: "All", environment: "All" });
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
@@ -327,7 +334,8 @@ export default function BugsTab({ pat }) {
     statuses:   [...new Set(allBugs.map((b) => b.state))].sort((a, b) => (STATUS_ORDER[a] ?? 99) - (STATUS_ORDER[b] ?? 99)),
     priorities: [...new Set(allBugs.map((b) => b.priority).filter(Boolean))].sort((a, b) => a - b),
     iterations: [...new Set(allBugs.map((b) => shortIteration(b.iterationPath)).filter(Boolean))].sort(),
-    assignees:  [...new Set(allBugs.map((b) => b.assignee).filter((a) => a !== "Unassigned"))].sort(),
+    assignees:    [...new Set(allBugs.map((b) => b.assignee).filter((a) => a !== "Unassigned"))].sort(),
+    environments: [...new Set(allBugs.map((b) => b.environment).filter(Boolean))].sort(),
   }), [allBugs]);
 
   // Filter function applied to each bug
@@ -337,6 +345,7 @@ export default function BugsTab({ pat }) {
     if (filters.iteration !== "All" && shortIteration(bug.iterationPath) !== filters.iteration) return false;
     if (filters.assignee  !== "All" && bug.assignee !== filters.assignee) return false;
     if (filters.type !== "All" && bug.category !== filters.type) return false;
+    if (filters.environment !== "All" && bug.environment !== filters.environment) return false;
     return true;
   }, [filters]);
 
