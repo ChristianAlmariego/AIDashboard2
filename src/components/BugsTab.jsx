@@ -91,6 +91,7 @@ function BugCard({ bug, storyTitle }) {
         <div className="bug-meta-item"><span className="bug-meta-lbl">Iteration</span><span>{shortIteration(bug.iterationPath) || "—"}</span></div>
         <div className="bug-meta-item"><span className="bug-meta-lbl">Parent Story</span><span>{storyTitle}</span></div>
         <div className="bug-meta-item"><span className="bug-meta-lbl">Created</span><span>{fmtDate(bug.createdDate)}</span></div>
+        {bug.environment && <div className="bug-meta-item"><span className="bug-meta-lbl">Affected Env</span><span>{bug.environment}</span></div>}
       </div>
     </div>
   );

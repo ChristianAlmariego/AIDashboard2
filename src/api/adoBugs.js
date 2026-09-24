@@ -44,6 +44,12 @@ const FEATURE_FIELDS = [
   "System.Tags",
 ].join(",");
 
+function stripHtml(html) {
+  if (!html) return null;
+  const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return text || null;
+}
+
 function makeHeaders(pat) {
   return {
     Authorization: `Basic ${btoa(`:${pat}`)}`,
@@ -132,7 +138,7 @@ function normalize(raw) {
     severity: f["Microsoft.VSTS.Common.Severity"] ?? null,
     storyPoints: f["Microsoft.VSTS.Scheduling.StoryPoints"] ?? null,
     tags: f["System.Tags"] ?? "",
-    environment: f["Microsoft.VSTS.TCM.SystemInfo"] ?? null,
+    environment: stripHtml(f["Microsoft.VSTS.TCM.SystemInfo"]),
     createdDate: f["System.CreatedDate"] ?? null,
     changedDate: f["System.ChangedDate"] ?? null,
     url: `https://dev.azure.com/${ORG}/${PROJECT}/_workitems/edit/${raw.id}`,
