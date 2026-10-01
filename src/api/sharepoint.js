@@ -1,13 +1,19 @@
 import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
 
-// ─── Azure AD App Registration ────────────────────────────────────────────────
-// Register a Single-Page Application at https://portal.azure.com:
-//   - Redirect URI: https://christianalmariego.github.io/AIDashboard2/
-//   - API permissions: Microsoft Graph → Sites.Read.All (delegated)
-// Then paste the Application (client) ID below.
-const CLIENT_ID = "YOUR_CLIENT_ID_HERE";
+// ─── Client ID — stored in localStorage, set via UI ──────────────────────────
+const LS_KEY = "aidashboard_sp_client_id";
 
-const TENANT_ID = "common"; // or your Emerson tenant ID for faster login
+export function getClientId() {
+  try { return localStorage.getItem(LS_KEY) ?? ""; } catch { return ""; }
+}
+
+export function setClientId(id) {
+  try { localStorage.setItem(LS_KEY, id.trim()); } catch {}
+  // Reset cached MSAL instance so next sign-in uses the new ID
+  _pca = null;
+}
+
+const TENANT_ID = "common";
 
 const SHAREPOINT_HOST = "emerson.sharepoint.com";
 const SITE_PATH = "/sites/DCXIT";
@@ -23,7 +29,7 @@ function getPca() {
   if (!_pca) {
     _pca = new PublicClientApplication({
       auth: {
-        clientId: CLIENT_ID,
+        clientId: getClientId(),
         authority: `https://login.microsoftonline.com/${TENANT_ID}`,
         redirectUri: window.location.origin + window.location.pathname,
       },
@@ -90,7 +96,7 @@ async function resolveSiteDrive(token) {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function isConfigured() {
-  return CLIENT_ID !== "YOUR_CLIENT_ID_HERE";
+  return getClientId().length > 0;
 }
 
 /** Sign in and return the user's display name */

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { isConfigured, signIn, signOut, listPiFolders, downloadPiExcel } from "../api/sharepoint";
+import { isConfigured, getClientId, setClientId, signIn, signOut, listPiFolders, downloadPiExcel } from "../api/sharepoint";
 
 // Utilization thresholds
 const UTIL_COLOR = (pct) => {
@@ -84,8 +84,14 @@ function SharePointPicker({ onLoaded }) {
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
   const [err, setErr] = useState("");
+  const [clientIdInput, setClientIdInput] = useState(getClientId);
+  const [configured, setConfigured] = useState(isConfigured);
 
-  const configured = isConfigured();
+  function handleSaveClientId() {
+    setClientId(clientIdInput);
+    setConfigured(isConfigured());
+    setErr("");
+  }
 
   async function handleSignIn() {
     setErr("");
@@ -129,18 +135,44 @@ function SharePointPicker({ onLoaded }) {
   if (!configured) {
     return (
       <div className="cap-upload-wrap">
-        <div className="cap-dropzone" style={{ cursor: "default", borderStyle: "solid" }}>
-          <div className="cap-drop-icon">⚙️</div>
-          <div className="cap-drop-title">SharePoint Integration — Setup Required</div>
-          <div className="cap-drop-sub" style={{ maxWidth: 480 }}>
-            Register an Azure AD Single-Page Application and paste its <strong>Client ID</strong> into{" "}
-            <code>src/api/sharepoint.js</code> (the <code>CLIENT_ID</code> constant).
+        <div className="cap-sp-card">
+          <div className="cap-sp-logo">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <rect width="32" height="32" rx="6" fill="#038387" />
+              <text x="6" y="23" fontSize="20" fontWeight="bold" fill="white">S</text>
+            </svg>
+            <span className="cap-sp-title">Connect to SharePoint</span>
           </div>
-          <div className="cap-drop-hint" style={{ marginTop: 12 }}>
-            Redirect URI to register: <code>{window.location.origin + window.location.pathname}</code>
-            <br />
-            Required Graph permission: <code>Sites.Read.All</code> (delegated)
+          <div className="cap-sp-path">General / FY26 Documents / PI Planning Documents</div>
+          <p style={{ fontSize: ".85rem", color: "#555", margin: 0 }}>
+            Enter your Azure AD <strong>Application (Client) ID</strong> to enable sign-in.
+            Register a Single-Page Application at{" "}
+            <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer">
+              portal.azure.com
+            </a>{" "}
+            with redirect URI <code>{window.location.origin + window.location.pathname}</code> and{" "}
+            <code>Sites.Read.All</code> delegated permission.
+          </p>
+          <div className="cap-sp-row">
+            <label className="cap-sp-label" style={{ whiteSpace: "nowrap" }}>Client ID</label>
+            <input
+              className="dash-input cap-sp-clientid"
+              type="text"
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              value={clientIdInput}
+              onChange={(e) => setClientIdInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSaveClientId()}
+              spellCheck={false}
+            />
+            <button
+              className="dash-btn cap-sp-btn"
+              onClick={handleSaveClientId}
+              disabled={!clientIdInput.trim()}
+            >
+              Save
+            </button>
           </div>
+          {err && <div className="cap-error" style={{ marginTop: 4 }}>{err}</div>}
         </div>
       </div>
     );
