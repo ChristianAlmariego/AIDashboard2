@@ -9,59 +9,78 @@ export function getClientId() {
 
 export function setClientId(id) {
   try { localStorage.setItem(LS_KEY, id.trim()); } catch {}
-  // Reset cached MSAL instance so next sign-in uses the new ID
-  _pca = null;
+  _pca = null; // reset so next sign-in uses the new ID
 }
 
 const TENANT_ID = "common";
-
 const SHAREPOINT_HOST = "emerson.sharepoint.com";
 const SITE_PATH = "/sites/DCXIT";
 const LIBRARY_NAME = "QA Library";
-const FOLDER_SERVER_PATH = "/sites/DCXIT/QA Library/General/FY26 Documents/PI Planning Documents";
-// Graph folder path (relative to drive root)
 const GRAPH_FOLDER_PATH = "General/FY26 Documents/PI Planning Documents";
 
 // ─── MSAL instance ────────────────────────────────────────────────────────────
 let _pca = null;
+let _initialized = false;
 
-function getPca() {
+function getRedirectUri() {
+  // Must match exactly what's registered in Azure AD
+  return window.location.origin + window.location.pathname.replace(/\/$/, "");
+}
+
+async function getPca() {
   if (!_pca) {
     _pca = new PublicClientApplication({
       auth: {
         clientId: getClientId(),
         authority: `https://login.microsoftonline.com/${TENANT_ID}`,
-        redirectUri: window.location.origin + window.location.pathname,
+        redirectUri: getRedirectUri(),
+        navigateToLoginRequestUrl: true,
       },
-      cache: { cacheLocation: "sessionStorage" },
+      cache: {
+        cacheLocation: "sessionStorage",
+        storeAuthStateInCookie: true, // helps with browsers blocking third-party cookies
+      },
     });
+    _initialized = false;
+  }
+  if (!_initialized) {
+    await _pca.initialize();
+    _initialized = true;
   }
   return _pca;
 }
 
-async function getToken() {
-  const pca = getPca();
-  await pca.initialize();
-
-  // Handle redirect response if returning from login
-  await pca.handleRedirectPromise();
-
-  const accounts = pca.getAllAccounts();
-  const scopes = [`https://${SHAREPOINT_HOST}/.default`];
-
-  const request = { scopes, account: accounts[0] };
-
+// Call this on app load to complete any pending redirect login
+export async function handleRedirect() {
   try {
-    const result = await pca.acquireTokenSilent(request);
-    return result.accessToken;
-  } catch (e) {
-    if (e instanceof InteractionRequiredAuthError || !accounts.length) {
-      // Popup is more SPA-friendly than redirect for this use case
-      const result = await pca.acquireTokenPopup({ scopes });
-      return result.accessToken;
-    }
-    throw e;
+    const pca = await getPca();
+    const result = await pca.handleRedirectPromise();
+    return result; // non-null if returning from a redirect login
+  } catch {
+    return null;
   }
+}
+
+const SCOPES = [`https://${SHAREPOINT_HOST}/.default`];
+
+async function getToken() {
+  const pca = await getPca();
+  const accounts = pca.getAllAccounts();
+
+  if (accounts.length) {
+    try {
+      const result = await pca.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
+      return result.accessToken;
+    } catch (e) {
+      if (!(e instanceof InteractionRequiredAuthError)) throw e;
+      // Fall through to redirect login
+    }
+  }
+
+  // Use redirect (no popup — avoids popup-blocked / timed_out errors)
+  await pca.loginRedirect({ scopes: SCOPES });
+  // loginRedirect navigates away; execution stops here
+  return null; // unreachable, satisfies linter
 }
 
 async function graphGet(token, path) {
@@ -99,32 +118,47 @@ export function isConfigured() {
   return getClientId().length > 0;
 }
 
-/** Sign in and return the user's display name */
+export function getSignedInAccount() {
+  if (!_pca || !_initialized) return null;
+  const accounts = _pca.getAllAccounts();
+  return accounts[0] ?? null;
+}
+
+/** Trigger redirect login (navigates away then back) */
 export async function signIn() {
-  const token = await getToken();
-  const me = await graphGet(token, "/me");
+  await getToken(); // triggers loginRedirect if not signed in
+}
+
+/** Fetch user display name after redirect returns */
+export async function getMe() {
+  const pca = await getPca();
+  const accounts = pca.getAllAccounts();
+  if (!accounts.length) return null;
+  const result = await pca.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
+  const me = await graphGet(result.accessToken, "/me");
   return me.displayName ?? me.userPrincipalName;
 }
 
-/** Sign out */
+/** Sign out via redirect */
 export async function signOut() {
-  const pca = getPca();
-  await pca.initialize();
+  const pca = await getPca();
   const accounts = pca.getAllAccounts();
-  if (accounts.length) await pca.logoutPopup({ account: accounts[0] });
   _siteId = null;
   _driveId = null;
+  if (accounts.length) {
+    await pca.logoutRedirect({ account: accounts[0] });
+  }
 }
 
-/** List PI folder names under the base planning folder.
- *  Returns [{ name: "PI 27.1", id: "..." }, …] */
+/** List PI folder names. Returns [{ name, id }] */
 export async function listPiFolders() {
   const token = await getToken();
   const { siteId, driveId } = await resolveSiteDrive(token);
 
+  const encoded = GRAPH_FOLDER_PATH.split("/").map(encodeURIComponent).join("/");
   const data = await graphGet(
     token,
-    `/sites/${siteId}/drives/${driveId}/root:/${encodeURIComponent(GRAPH_FOLDER_PATH)}:/children?$filter=folder ne null&$select=id,name,folder`
+    `/sites/${siteId}/drives/${driveId}/root:/${encoded}:/children?$select=id,name,folder`
   );
 
   return (data.value ?? [])
@@ -133,13 +167,11 @@ export async function listPiFolders() {
     .map((item) => ({ id: item.id, name: item.name }));
 }
 
-/** Find and download the capacity Excel file inside a PI folder.
- *  Returns ArrayBuffer ready for XLSX.read(). */
+/** Download the capacity Excel inside a PI folder. Returns { buffer, fileName } */
 export async function downloadPiExcel(piFolderId) {
   const token = await getToken();
   const { siteId, driveId } = await resolveSiteDrive(token);
 
-  // List children of the PI folder
   const data = await graphGet(
     token,
     `/sites/${siteId}/drives/${driveId}/items/${piFolderId}/children?$select=id,name,file`
@@ -150,7 +182,6 @@ export async function downloadPiExcel(piFolderId) {
   );
   if (!file) throw new Error("Capacity Planning Template Excel not found in the selected PI folder.");
 
-  // Download file content
   const res = await fetch(
     `https://graph.microsoft.com/v1.0/sites/${siteId}/drives/${driveId}/items/${file.id}/content`,
     { headers: { Authorization: `Bearer ${token}` } }

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { isConfigured, getClientId, setClientId, signIn, signOut, listPiFolders, downloadPiExcel } from "../api/sharepoint";
+import { isConfigured, getClientId, setClientId, handleRedirect, getMe, signIn, signOut, listPiFolders, downloadPiExcel } from "../api/sharepoint";
 
 // Utilization thresholds
 const UTIL_COLOR = (pct) => {
@@ -79,13 +79,33 @@ function parseWorkbook(wb) {
 
 // ─── SharePoint Picker ────────────────────────────────────────────────────────
 function SharePointPicker({ onLoaded }) {
-  const [step, setStep] = useState("idle"); // idle | signing-in | picking | loading
+  const [step, setStep] = useState("idle"); // idle | redirect-check | signing-in | picking | loading
   const [user, setUser] = useState(null);
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
   const [err, setErr] = useState("");
   const [clientIdInput, setClientIdInput] = useState(getClientId);
   const [configured, setConfigured] = useState(isConfigured);
+
+  // On mount: complete any pending redirect login
+  useEffect(() => {
+    if (!isConfigured()) return;
+    setStep("redirect-check");
+    handleRedirect()
+      .then(() => getMe())
+      .then(async (name) => {
+        if (name) {
+          setUser(name);
+          setStep("picking");
+          const piFolders = await listPiFolders();
+          setFolders(piFolders);
+          if (piFolders.length) setSelectedFolderId(piFolders[piFolders.length - 1].id);
+        } else {
+          setStep("idle");
+        }
+      })
+      .catch(() => setStep("idle"));
+  }, []);
 
   function handleSaveClientId() {
     setClientId(clientIdInput);
@@ -97,12 +117,7 @@ function SharePointPicker({ onLoaded }) {
     setErr("");
     setStep("signing-in");
     try {
-      const name = await signIn();
-      setUser(name);
-      setStep("picking");
-      const piFolders = await listPiFolders();
-      setFolders(piFolders);
-      if (piFolders.length) setSelectedFolderId(piFolders[piFolders.length - 1].id);
+      await signIn(); // triggers loginRedirect — page navigates away
     } catch (e) {
       setErr(e.message);
       setStep("idle");
@@ -197,9 +212,9 @@ function SharePointPicker({ onLoaded }) {
           <button
             className="dash-btn cap-sp-btn"
             onClick={handleSignIn}
-            disabled={step === "signing-in"}
+            disabled={step === "signing-in" || step === "redirect-check"}
           >
-            {step === "signing-in" ? "Signing in…" : "Sign in with Microsoft"}
+            {step === "redirect-check" ? "Checking session…" : step === "signing-in" ? "Redirecting…" : "Sign in with Microsoft"}
           </button>
         )}
 
