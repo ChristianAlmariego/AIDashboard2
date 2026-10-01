@@ -66,7 +66,7 @@ export async function handleRedirect() {
   }
 }
 
-const SCOPES = [`https://${SHAREPOINT_HOST}/.default`];
+const SCOPES = ["Sites.Read.All", "Files.Read.All", "User.Read"];
 
 async function getToken() {
   const pca = await getPca();
