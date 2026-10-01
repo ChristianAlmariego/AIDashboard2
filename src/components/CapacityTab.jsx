@@ -1,119 +1,112 @@
 import { useState, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 
+// Utilization thresholds
 const UTIL_COLOR = (pct) => {
+  if (pct === null) return { bg: "#e9ecef", border: "#adb5bd", text: "#495057" };
   if (pct > 100) return { bg: "#f8d7da", border: "#dc3545", text: "#721c24" };
   if (pct >= 90) return { bg: "#fff3cd", border: "#f0c040", text: "#7a5700" };
   return { bg: "#d4edda", border: "#28a745", text: "#155724" };
 };
 
-const TEAM_COLORS = {
-  Commerce: "#3b82f6",
-  ICU: "#0ea5e9",
-  Automation: "#06b6d4",
-  Content: "#0d9488",
-};
+// Sprint name → iteration key (e.g. "Sprint 1" → "PI27.1.1")
+function sprintToIter(sprintLabel, piPrefix) {
+  const m = sprintLabel.match(/(\d+)/);
+  if (!m) return sprintLabel;
+  return `${piPrefix}.${m[1]}`;
+}
 
-function parseCapacitySheet(wb) {
-  // Try common sheet names for capacity
-  const names = wb.SheetNames;
-  const capSheet = names.find((n) =>
-    /capacity/i.test(n) && !/iteration/i.test(n)
-  ) || names.find((n) => /weekly/i.test(n));
-  if (!capSheet) return null;
+function parseFile(wb) {
+  // ── 1. Find the "Weekly Capacity" sheet ──────────────────────────────────
+  const capSheetName = wb.SheetNames.find((n) => /weekly.*cap|cap.*h/i.test(n));
+  if (!capSheetName) throw new Error('Could not find "Weekly Capacity in H" sheet.');
+  const capWs = wb.Sheets[capSheetName];
+  const capRows = XLSX.utils.sheet_to_json(capWs, { header: 1, defval: null });
 
-  const ws = wb.Sheets[capSheet];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-  // Look for rows with assignee + numeric capacity values
-  const cap = {}; // { assignee: { iter: number } }
-  for (const row of rows) {
-    const name = String(row[0] || "").trim();
-    if (!name || /name|member|assignee/i.test(name)) continue;
-    for (let c = 1; c < row.length; c++) {
-      const val = row[c];
-      if (typeof val === "number" && val > 0) {
-        if (!cap[name]) cap[name] = {};
-        cap[name][`col${c}`] = val;
+  // Row 5 (index 4) = sprint labels: null, "Sprint 1", null, null, "Sprint 2" …
+  const sprintHeaderRow = capRows[4] ?? [];
+  // Row 7 (index 6) = "Name", "Week 1" … "Week 12"
+  const nameHeaderRow = capRows[6] ?? [];
+
+  // Build sprint → [col indices] map (1-based col, index 0 = label col)
+  const sprintCols = {}; // { "Sprint 1": [1,2,3], "Sprint 2": [4,5,6], … }
+  let curSprint = null;
+  for (let c = 1; c < sprintHeaderRow.length; c++) {
+    if (sprintHeaderRow[c]) curSprint = String(sprintHeaderRow[c]);
+    if (curSprint) {
+      if (!sprintCols[curSprint]) sprintCols[curSprint] = [];
+      sprintCols[curSprint].push(c);
+    }
+  }
+
+  const sprints = Object.keys(sprintCols).sort(); // ["Sprint 1","Sprint 2","Sprint 3","Sprint 4"]
+
+  // Detect PI prefix from IterationPlan
+  const ipSheetName = wb.SheetNames.find((n) => /iteration.*plan|2\)/i.test(n));
+  let piPrefix = "PI27.1";
+  if (ipSheetName) {
+    const ipWs = wb.Sheets[ipSheetName];
+    const ipRows = XLSX.utils.sheet_to_json(ipWs, { header: 1, defval: null });
+    for (const row of ipRows) {
+      const iter = String(row[3] ?? "");
+      const m = iter.match(/(PI\d+\.\d+)\.\d+/i);
+      if (m) { piPrefix = m[1]; break; }
+    }
+  }
+
+  // Map sprint label → iteration key
+  const sprintToIterMap = {};
+  for (const s of sprints) {
+    sprintToIterMap[s] = sprintToIter(s, piPrefix);
+  }
+  const iterations = sprints.map((s) => sprintToIterMap[s]); // ["PI27.1.1", …]
+
+  // ── 2. Parse capacity rows (rows 26–35, index ~25–34) ──────────────────
+  // Find the "Weekly Capacity" section header row
+  let capDataStart = -1;
+  for (let i = 0; i < capRows.length; i++) {
+    const cell = String(capRows[i]?.[0] ?? "");
+    if (/weekly capacity/i.test(cell) && i > 15) { capDataStart = i + 2; break; } // skip header + dates row
+  }
+  if (capDataStart === -1) capDataStart = 24; // fallback
+
+  const capacity = {}; // { name: { iterKey: hours } }
+  for (let i = capDataStart; i < capRows.length; i++) {
+    const row = capRows[i];
+    const name = String(row?.[0] ?? "").trim();
+    if (!name || /total|name/i.test(name)) continue;
+    if (!row || row.slice(1).every((v) => v === null)) break;
+    capacity[name] = {};
+    for (const [sprint, cols] of Object.entries(sprintCols)) {
+      const iterKey = sprintToIterMap[sprint];
+      capacity[name][iterKey] = cols.reduce((s, c) => s + (typeof row[c] === "number" ? row[c] : 0), 0);
+    }
+  }
+
+  // ── 3. Parse load from IterationPlan ────────────────────────────────────
+  // Col A=work item, B=category, C=priority, D=iteration, E=assignee, F=hours
+  const load = {}; // { name: { iterKey: hours } }
+  const categories = {}; // { name: Set<category> }
+
+  if (ipSheetName) {
+    const ipWs = wb.Sheets[ipSheetName];
+    const ipRows = XLSX.utils.sheet_to_json(ipWs, { header: 1, defval: null });
+    for (const row of ipRows) {
+      const assignee = String(row[4] ?? "").trim();
+      const iteration = String(row[3] ?? "").trim();
+      const hours = row[5];
+      const category = String(row[1] ?? "").trim();
+      if (!assignee || !iteration || typeof hours !== "number") continue;
+      if (!load[assignee]) load[assignee] = {};
+      load[assignee][iteration] = (load[assignee][iteration] || 0) + hours;
+      if (category) {
+        if (!categories[assignee]) categories[assignee] = new Set();
+        categories[assignee].add(category);
       }
     }
   }
-  return cap;
-}
 
-function parseIterationPlan(wb) {
-  const sheetName = wb.SheetNames.find((n) => /iteration.*plan/i.test(n) || /2\)/i.test(n)) || wb.SheetNames[1] || wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-  if (!ws) return { loads: {}, iterations: [], teams: {} };
-
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-
-  const loads = {}; // { assignee: { iteration: sp } }
-  const teams = {}; // { assignee: Set<team> }
-  const iterSet = new Set();
-
-  for (const row of rows) {
-    const assignee = String(row[4] || "").trim();
-    const iteration = String(row[3] || "").trim();
-    const spVal = row[5]; // col F — sub-task SP
-
-    if (!assignee || !iteration) continue;
-    if (typeof spVal !== "number") continue;
-
-    if (!loads[assignee]) loads[assignee] = {};
-    loads[assignee][iteration] = (loads[assignee][iteration] || 0) + spVal;
-    iterSet.add(iteration);
-
-    const team = String(row[1] || "").trim();
-    if (team) {
-      if (!teams[assignee]) teams[assignee] = new Set();
-      teams[assignee].add(team);
-    }
-  }
-
-  const iterations = [...iterSet].sort();
-  return { loads, iterations, teams };
-}
-
-// Try to parse capacity from a "Weekly Capacity" or similar sheet
-function parseCapacityRows(wb, iterations) {
-  const names = wb.SheetNames;
-  const sheetName = names.find((n) => /weekly.*cap|capacity.*sp|cap.*sp/i.test(n));
-  if (!sheetName) return {};
-
-  const ws = wb.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-
-  // Find header row — contains iteration names
-  let headerRow = null;
-  let headerIdx = -1;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    const hasIter = iterations.some((it) => r.some((c) => String(c).includes(it)));
-    if (hasIter) { headerRow = r; headerIdx = i; break; }
-  }
-  if (!headerRow) return {};
-
-  const colMap = {}; // col index -> iteration
-  headerRow.forEach((c, i) => {
-    const s = String(c).trim();
-    const match = iterations.find((it) => s.includes(it));
-    if (match) colMap[i] = match;
-  });
-
-  const cap = {};
-  for (let i = headerIdx + 1; i < rows.length; i++) {
-    const row = rows[i];
-    const name = String(row[0] || "").trim();
-    if (!name) continue;
-    for (const [ci, iter] of Object.entries(colMap)) {
-      const v = row[Number(ci)];
-      if (typeof v === "number" && v > 0) {
-        if (!cap[name]) cap[name] = {};
-        cap[name][iter] = v;
-      }
-    }
-  }
-  return cap;
+  return { capacity, load, iterations, categories, piPrefix };
 }
 
 export default function CapacityTab() {
@@ -129,12 +122,11 @@ export default function CapacityTab() {
     reader.onload = (e) => {
       try {
         const wb = XLSX.read(e.target.result, { type: "array" });
-        const { loads, iterations, teams } = parseIterationPlan(wb);
-        const cap = parseCapacityRows(wb, iterations);
-        setData({ loads, iterations, cap, teams });
+        const parsed = parseFile(wb);
+        setData(parsed);
         setFileName(file.name);
       } catch (ex) {
-        setErr("Failed to parse Excel file: " + ex.message);
+        setErr("Failed to parse file: " + ex.message);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -142,48 +134,29 @@ export default function CapacityTab() {
 
   const onFileChange = (e) => processFile(e.target.files[0]);
   const onDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragging(false);
+    e.preventDefault(); setDragging(false);
     processFile(e.dataTransfer.files[0]);
   }, []);
-  const onDragOver = (e) => { e.preventDefault(); setDragging(true); };
-  const onDragLeave = () => setDragging(false);
 
-  const { memberRows, teamSummary } = useMemo(() => {
-    if (!data) return { memberRows: [], teamSummary: [] };
-    const { loads, iterations, cap, teams } = data;
+  const memberRows = useMemo(() => {
+    if (!data) return [];
+    const { capacity, load, iterations } = data;
+    const names = [...new Set([...Object.keys(capacity), ...Object.keys(load)])].sort();
 
-    const members = Object.keys(loads).sort();
-    const memberRows = members.map((name) => {
-      const iterLoads = loads[name];
-      const iterCaps = cap[name] || {};
-      const totalLoad = iterations.reduce((s, it) => s + (iterLoads[it] || 0), 0);
-      const totalCap = iterations.reduce((s, it) => s + (iterCaps[it] || 0), 0);
-      const util = totalCap > 0 ? Math.round((totalLoad / totalCap) * 100) : null;
-      const team = teams[name] ? [...teams[name]].join("/") : "—";
-      return { name, team, iterLoads, iterCaps, totalLoad, totalCap, util };
+    return names.map((name) => {
+      const cap = capacity[name] || {};
+      const ld = load[name] || {};
+      const iterData = iterations.map((it) => {
+        const c = cap[it] ?? null;
+        const l = ld[it] ?? 0;
+        const util = c ? Math.round((l / c) * 100) : null;
+        return { iter: it, cap: c, load: l, util };
+      });
+      const totalCap = iterData.reduce((s, d) => s + (d.cap ?? 0), 0);
+      const totalLoad = iterData.reduce((s, d) => s + d.load, 0);
+      const totalUtil = totalCap > 0 ? Math.round((totalLoad / totalCap) * 100) : null;
+      return { name, iterData, totalCap, totalLoad, totalUtil };
     });
-
-    // Team summary
-    const teamMap = {};
-    for (const row of memberRows) {
-      const teamNames = teams[row.name] ? [...teams[row.name]] : ["Unknown"];
-      for (const t of teamNames) {
-        if (!teamMap[t]) teamMap[t] = { load: 0, cap: 0, members: 0 };
-        teamMap[t].load += row.totalLoad;
-        teamMap[t].cap += row.totalCap;
-        teamMap[t].members += 1;
-      }
-    }
-    const teamSummary = Object.entries(teamMap).map(([name, d]) => ({
-      name,
-      load: Math.round(d.load * 10) / 10,
-      cap: Math.round(d.cap * 10) / 10,
-      util: d.cap > 0 ? Math.round((d.load / d.cap) * 100) : null,
-      members: d.members,
-    })).sort(([a], [b]) => a.localeCompare(b));
-
-    return { memberRows, teamSummary };
   }, [data]);
 
   if (!data) {
@@ -192,14 +165,14 @@ export default function CapacityTab() {
         <div
           className={`cap-dropzone${dragging ? " dragging" : ""}`}
           onDrop={onDrop}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
           onClick={() => document.getElementById("cap-file-input").click()}
         >
           <div className="cap-drop-icon">📊</div>
           <div className="cap-drop-title">Upload PI Capacity Excel</div>
           <div className="cap-drop-sub">Drag &amp; drop or click to select the capacity planning file</div>
-          <div className="cap-drop-hint">Expected sheet: <code>2) IterationPlan</code></div>
+          <div className="cap-drop-hint">Reads <code>Weekly Capacity in H</code> + <code>2) IterationPlan</code> sheets</div>
           <input id="cap-file-input" type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={onFileChange} />
         </div>
         {err && <div className="cap-error">{err}</div>}
@@ -207,7 +180,19 @@ export default function CapacityTab() {
     );
   }
 
-  const { loads, iterations, cap } = data;
+  const { iterations, piPrefix } = data;
+
+  // Overall team summary per iteration
+  const teamSummary = iterations.map((it) => {
+    const totalCap = memberRows.reduce((s, r) => s + (r.iterData.find((d) => d.iter === it)?.cap ?? 0), 0);
+    const totalLoad = memberRows.reduce((s, r) => s + (r.iterData.find((d) => d.iter === it)?.load ?? 0), 0);
+    const util = totalCap > 0 ? Math.round((totalLoad / totalCap) * 100) : null;
+    return { it, totalCap, totalLoad, util };
+  });
+
+  const grandCap = memberRows.reduce((s, r) => s + r.totalCap, 0);
+  const grandLoad = memberRows.reduce((s, r) => s + r.totalLoad, 0);
+  const grandUtil = grandCap > 0 ? Math.round((grandLoad / grandCap) * 100) : null;
 
   return (
     <div className="cap-wrap">
@@ -216,26 +201,42 @@ export default function CapacityTab() {
         <button className="dash-btn" onClick={() => { setData(null); setFileName(""); }}>Change File</button>
       </div>
 
-      {/* Team KPI tiles */}
+      {/* Team KPI tiles per iteration */}
       <div className="cap-team-row">
-        {teamSummary.map((t) => {
-          const col = UTIL_COLOR(t.util ?? 0);
-          const color = TEAM_COLORS[t.name] || "#6c757d";
+        <div className="cap-team-tile" style={{ borderTopColor: "#003865" }}>
+          <div className="cap-team-name" style={{ color: "#003865" }}>{piPrefix} Total</div>
+          <div className="cap-team-members">{memberRows.length} members</div>
+          <div className="cap-team-stats">
+            <span>{grandLoad}h / {grandCap}h</span>
+            {grandUtil !== null && (
+              <span className="cap-util-badge" style={{ background: UTIL_COLOR(grandUtil).bg, color: UTIL_COLOR(grandUtil).text, border: `1px solid ${UTIL_COLOR(grandUtil).border}` }}>
+                {grandUtil}%
+              </span>
+            )}
+          </div>
+          {grandCap > 0 && (
+            <div className="cap-util-bar-wrap">
+              <div className="cap-util-bar" style={{ width: `${Math.min(grandUtil, 100)}%`, background: UTIL_COLOR(grandUtil).border }} />
+            </div>
+          )}
+        </div>
+        {teamSummary.map(({ it, totalCap, totalLoad, util }) => {
+          const col = UTIL_COLOR(util);
           return (
-            <div key={t.name} className="cap-team-tile" style={{ borderTopColor: color }}>
-              <div className="cap-team-name" style={{ color }}>{t.name}</div>
-              <div className="cap-team-members">{t.members} member{t.members !== 1 ? "s" : ""}</div>
+            <div key={it} className="cap-team-tile" style={{ borderTopColor: col.border }}>
+              <div className="cap-team-name" style={{ color: col.text }}>{it}</div>
+              <div className="cap-team-members">Sprint capacity</div>
               <div className="cap-team-stats">
-                <span>{t.load} / {t.cap > 0 ? t.cap : "—"} SP</span>
-                {t.util !== null && (
+                <span>{totalLoad}h / {totalCap}h</span>
+                {util !== null && (
                   <span className="cap-util-badge" style={{ background: col.bg, color: col.text, border: `1px solid ${col.border}` }}>
-                    {t.util}%
+                    {util}%
                   </span>
                 )}
               </div>
-              {t.cap > 0 && (
+              {totalCap > 0 && (
                 <div className="cap-util-bar-wrap">
-                  <div className="cap-util-bar" style={{ width: `${Math.min(t.util, 100)}%`, background: col.border }} />
+                  <div className="cap-util-bar" style={{ width: `${Math.min(util, 100)}%`, background: col.border }} />
                 </div>
               )}
             </div>
@@ -249,59 +250,81 @@ export default function CapacityTab() {
           <thead>
             <tr>
               <th>Member</th>
-              <th>Team</th>
               {iterations.map((it) => (
-                <th key={it} colSpan={2} className="cap-iter-header">{it}</th>
+                <th key={it} colSpan={3} className="cap-iter-header">{it}</th>
               ))}
-              <th colSpan={2}>Total</th>
+              <th colSpan={3} className="cap-iter-header">Total</th>
             </tr>
             <tr className="cap-subheader">
-              <th /><th />
-              {iterations.map((it) => [
-                <th key={`${it}-l`} className="cap-sub-th">Load</th>,
-                <th key={`${it}-c`} className="cap-sub-th">Cap</th>,
+              <th />
+              {[...iterations, "total"].map((it) => [
+                <th key={`${it}-l`} className="cap-sub-th">Load (h)</th>,
+                <th key={`${it}-c`} className="cap-sub-th">Cap (h)</th>,
+                <th key={`${it}-u`} className="cap-sub-th">Util %</th>,
               ])}
-              <th className="cap-sub-th">Load</th>
-              <th className="cap-sub-th">Cap</th>
             </tr>
           </thead>
           <tbody>
             {memberRows.map((row) => {
-              const col = UTIL_COLOR(row.util ?? 0);
+              const totalCol = UTIL_COLOR(row.totalUtil);
               return (
                 <tr key={row.name} className="cap-member-row">
                   <td className="cap-member-name">{row.name}</td>
-                  <td className="cap-member-team">
-                    <span className="cap-team-tag" style={{ background: TEAM_COLORS[row.team] ? TEAM_COLORS[row.team] + "22" : "#e9ecef", color: TEAM_COLORS[row.team] || "#495057", border: `1px solid ${TEAM_COLORS[row.team] || "#adb5bd"}` }}>
-                      {row.team}
-                    </span>
-                  </td>
-                  {iterations.map((it) => {
-                    const load = row.iterLoads[it] || 0;
-                    const c = (row.iterCaps[it]) || null;
-                    const iterUtil = c ? Math.round((load / c) * 100) : null;
-                    const ic = iterUtil !== null ? UTIL_COLOR(iterUtil) : null;
+                  {row.iterData.map(({ iter, cap, load, util }) => {
+                    const col = UTIL_COLOR(util);
                     return [
-                      <td key={`${it}-l`} className="cap-td-num">{load > 0 ? Math.round(load * 10) / 10 : "—"}</td>,
-                      <td key={`${it}-c`} className="cap-td-num" style={ic ? { color: ic.text } : {}}>
-                        {c !== null ? c : "—"}
-                        {iterUtil !== null && <span className="cap-iter-pct" style={{ color: ic.text }}> {iterUtil}%</span>}
+                      <td key={`${iter}-l`} className="cap-td-num">{load > 0 ? load : "—"}</td>,
+                      <td key={`${iter}-c`} className="cap-td-num">{cap !== null ? cap : "—"}</td>,
+                      <td key={`${iter}-u`} className="cap-td-num">
+                        {util !== null ? (
+                          <span className="cap-util-badge cap-badge-sm" style={{ background: col.bg, color: col.text, border: `1px solid ${col.border}` }}>
+                            {util}%
+                          </span>
+                        ) : "—"}
                       </td>,
                     ];
                   })}
-                  <td className="cap-td-num cap-td-total">{Math.round(row.totalLoad * 10) / 10}</td>
+                  <td className="cap-td-num cap-td-total">{row.totalLoad > 0 ? row.totalLoad : "—"}</td>
+                  <td className="cap-td-num cap-td-total">{row.totalCap > 0 ? row.totalCap : "—"}</td>
                   <td className="cap-td-num cap-td-total">
-                    {row.totalCap > 0 ? row.totalCap : "—"}
-                    {row.util !== null && (
-                      <span className="cap-util-badge cap-badge-sm" style={{ background: col.bg, color: col.text, border: `1px solid ${col.border}` }}>
-                        {row.util}%
+                    {row.totalUtil !== null ? (
+                      <span className="cap-util-badge cap-badge-sm" style={{ background: totalCol.bg, color: totalCol.text, border: `1px solid ${totalCol.border}` }}>
+                        {row.totalUtil}%
                       </span>
-                    )}
+                    ) : "—"}
                   </td>
                 </tr>
               );
             })}
           </tbody>
+          <tfoot>
+            <tr className="cap-member-row" style={{ fontWeight: 700, background: "#f1f3f5" }}>
+              <td className="cap-member-name">TOTAL</td>
+              {teamSummary.map(({ it, totalLoad, totalCap, util }) => {
+                const col = UTIL_COLOR(util);
+                return [
+                  <td key={`${it}-l`} className="cap-td-num cap-td-total">{totalLoad}</td>,
+                  <td key={`${it}-c`} className="cap-td-num cap-td-total">{totalCap}</td>,
+                  <td key={`${it}-u`} className="cap-td-num cap-td-total">
+                    {util !== null && (
+                      <span className="cap-util-badge cap-badge-sm" style={{ background: col.bg, color: col.text, border: `1px solid ${col.border}` }}>
+                        {util}%
+                      </span>
+                    )}
+                  </td>,
+                ];
+              })}
+              <td className="cap-td-num cap-td-total">{grandLoad}</td>
+              <td className="cap-td-num cap-td-total">{grandCap}</td>
+              <td className="cap-td-num cap-td-total">
+                {grandUtil !== null && (
+                  <span className="cap-util-badge cap-badge-sm" style={{ background: UTIL_COLOR(grandUtil).bg, color: UTIL_COLOR(grandUtil).text, border: `1px solid ${UTIL_COLOR(grandUtil).border}` }}>
+                    {grandUtil}%
+                  </span>
+                )}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
@@ -309,6 +332,7 @@ export default function CapacityTab() {
         <span className="cap-leg-item" style={{ color: "#155724" }}>✅ &lt; 90% Healthy</span>
         <span className="cap-leg-item" style={{ color: "#7a5700" }}>⚠️ 90–100% Near Capacity</span>
         <span className="cap-leg-item" style={{ color: "#721c24" }}>🔴 &gt; 100% Over-allocated</span>
+        <span className="cap-leg-item" style={{ color: "#666", marginLeft: "auto" }}>Load & Capacity in hours (h)</span>
       </div>
     </div>
   );
