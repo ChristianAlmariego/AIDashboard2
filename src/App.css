@@ -224,3 +224,16 @@
 
 .cap-legend { display:flex; gap:20px; flex-wrap:wrap; font-size:.82rem; padding:4px 0; }
 .cap-leg-item { font-weight:600; }
+
+/* SharePoint picker card */
+.cap-sp-card { background:#fff; border:1px solid #dee2e6; border-radius:12px; padding:32px 40px; max-width:560px; width:100%; display:flex; flex-direction:column; gap:16px; }
+.cap-sp-logo { display:flex; align-items:center; gap:12px; }
+.cap-sp-title { font-size:1.1rem; font-weight:700; color:#1a1a2e; }
+.cap-sp-path { font-size:.8rem; color:#888; background:#f8f9fa; border-radius:6px; padding:6px 12px; font-family:monospace; }
+.cap-sp-btn { min-width:160px; }
+.cap-sp-user { font-size:.9rem; color:#444; display:flex; align-items:center; gap:12px; }
+.cap-sp-signout { background:none; border:none; color:#dc3545; cursor:pointer; font-size:.8rem; text-decoration:underline; padding:0; }
+.cap-sp-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.cap-sp-label { font-size:.9rem; font-weight:600; white-space:nowrap; }
+.cap-sp-select { min-width:160px; }
+.cap-sp-hint { font-size:.85rem; color:#888; }

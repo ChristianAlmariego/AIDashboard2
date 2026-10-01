@@ -1,5 +1,6 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
+import { isConfigured, signIn, signOut, listPiFolders, downloadPiExcel } from "../api/sharepoint";
 
 // Utilization thresholds
 const UTIL_COLOR = (pct) => {
@@ -9,9 +10,8 @@ const UTIL_COLOR = (pct) => {
   return { bg: "#d4edda", border: "#28a745", text: "#155724" };
 };
 
-
-function parseFile(wb) {
-  // ── Find the "1) TeamLogistics" sheet ───────────────────────────────────
+function parseWorkbook(wb) {
+  // Find the "1) TeamLogistics" sheet
   const tlSheetName = wb.SheetNames.find((n) => /team.*logistics|1\)/i.test(n));
   if (!tlSheetName) throw new Error('Could not find "1) TeamLogistics" sheet.');
   const tlWs = wb.Sheets[tlSheetName];
@@ -25,15 +25,12 @@ function parseFile(wb) {
   }
   if (sectionRow === -1) throw new Error('Could not find "Capacity in H" section in TeamLogistics sheet.');
 
-  // Next row has column headers: [Name, ..., PI27.1.1, PI27.1.2, PI27.1.3, PI27.1.4, TOTAL, ...]
+  // Next row: column headers — Name, ..., PI27.1.1, PI27.1.2, PI27.1.3, PI27.1.4, TOTAL, ...
   const headerRow = tlRows[sectionRow + 1] ?? [];
 
-  // Cols 3–6 are sprint iteration keys for Capacity; Load block starts at col 11
-  // Read iteration names from header cols 3–6
   const iterations = [];
-  const capCols = []; // indices for capacity sprints
-  const loadCols = []; // indices for load sprints (offset ~8 cols right)
-  let loadOffset = -1;
+  const capCols = [];
+  const loadCols = [];
 
   for (let c = 0; c < headerRow.length; c++) {
     const h = String(headerRow[c] ?? "").trim();
@@ -45,19 +42,15 @@ function parseFile(wb) {
         loadCols.push(c);
       }
     }
-    if (/load in h/i.test(h) && loadOffset === -1) loadOffset = c;
   }
 
-  // Fallback: if only capacity cols found, derive load cols by offset
-  if (loadCols.length === 0 && capCols.length === 4) {
-    loadCols.push(...capCols.map((c) => c + 8));
-  }
+  if (capCols.length === 0) throw new Error("Could not find sprint iteration columns in TeamLogistics sheet.");
+  if (loadCols.length === 0) loadCols.push(...capCols.map((c) => c + 8));
 
-  const piPrefix = iterations[0]?.match(/(PI\d+\.\d+)\.\d+/i)?.[1] ?? "PI27.1";
+  const piPrefix = iterations[0]?.match(/(PI\d+\.\d+)\.\d+/i)?.[1] ?? "PI";
 
-  // ── Parse per-person rows ────────────────────────────────────────────────
-  const capacity = {}; // { name: { iterKey: hours } }
-  const load = {};     // { name: { iterKey: hours } }
+  const capacity = {};
+  const load = {};
 
   const dataStart = sectionRow + 2;
   for (let i = dataStart; i < tlRows.length; i++) {
@@ -81,37 +74,153 @@ function parseFile(wb) {
     }
   }
 
-  return { capacity, load, iterations, categories: {}, piPrefix };
+  return { capacity, load, iterations, piPrefix };
 }
 
+// ─── SharePoint Picker ────────────────────────────────────────────────────────
+function SharePointPicker({ onLoaded }) {
+  const [step, setStep] = useState("idle"); // idle | signing-in | picking | loading
+  const [user, setUser] = useState(null);
+  const [folders, setFolders] = useState([]);
+  const [selectedFolderId, setSelectedFolderId] = useState("");
+  const [err, setErr] = useState("");
+
+  const configured = isConfigured();
+
+  async function handleSignIn() {
+    setErr("");
+    setStep("signing-in");
+    try {
+      const name = await signIn();
+      setUser(name);
+      setStep("picking");
+      const piFolders = await listPiFolders();
+      setFolders(piFolders);
+      if (piFolders.length) setSelectedFolderId(piFolders[piFolders.length - 1].id);
+    } catch (e) {
+      setErr(e.message);
+      setStep("idle");
+    }
+  }
+
+  async function handleLoad() {
+    if (!selectedFolderId) return;
+    setErr("");
+    setStep("loading");
+    try {
+      const { buffer, fileName } = await downloadPiExcel(selectedFolderId);
+      const wb = XLSX.read(buffer, { type: "array" });
+      const parsed = parseWorkbook(wb);
+      onLoaded(parsed, fileName);
+    } catch (e) {
+      setErr(e.message);
+      setStep("picking");
+    }
+  }
+
+  async function handleSignOut() {
+    await signOut();
+    setUser(null);
+    setFolders([]);
+    setSelectedFolderId("");
+    setStep("idle");
+  }
+
+  if (!configured) {
+    return (
+      <div className="cap-upload-wrap">
+        <div className="cap-dropzone" style={{ cursor: "default", borderStyle: "solid" }}>
+          <div className="cap-drop-icon">⚙️</div>
+          <div className="cap-drop-title">SharePoint Integration — Setup Required</div>
+          <div className="cap-drop-sub" style={{ maxWidth: 480 }}>
+            Register an Azure AD Single-Page Application and paste its <strong>Client ID</strong> into{" "}
+            <code>src/api/sharepoint.js</code> (the <code>CLIENT_ID</code> constant).
+          </div>
+          <div className="cap-drop-hint" style={{ marginTop: 12 }}>
+            Redirect URI to register: <code>{window.location.origin + window.location.pathname}</code>
+            <br />
+            Required Graph permission: <code>Sites.Read.All</code> (delegated)
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cap-upload-wrap">
+      <div className="cap-sp-card">
+        <div className="cap-sp-logo">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <rect width="32" height="32" rx="6" fill="#038387" />
+            <text x="6" y="23" fontSize="20" fontWeight="bold" fill="white">S</text>
+          </svg>
+          <span className="cap-sp-title">Emerson SharePoint — QA Library</span>
+        </div>
+
+        <div className="cap-sp-path">
+          General / FY26 Documents / PI Planning Documents
+        </div>
+
+        {!user && (
+          <button
+            className="dash-btn cap-sp-btn"
+            onClick={handleSignIn}
+            disabled={step === "signing-in"}
+          >
+            {step === "signing-in" ? "Signing in…" : "Sign in with Microsoft"}
+          </button>
+        )}
+
+        {user && (
+          <>
+            <div className="cap-sp-user">
+              Signed in as <strong>{user}</strong>
+              <button className="cap-sp-signout" onClick={handleSignOut}>Sign out</button>
+            </div>
+
+            {folders.length === 0 && step === "picking" && (
+              <div className="cap-sp-hint">No PI folders found in the planning folder.</div>
+            )}
+
+            {folders.length > 0 && (
+              <div className="cap-sp-row">
+                <label className="cap-sp-label">Select PI</label>
+                <select
+                  className="dash-select cap-sp-select"
+                  value={selectedFolderId}
+                  onChange={(e) => setSelectedFolderId(e.target.value)}
+                >
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+                <button
+                  className="dash-btn cap-sp-btn"
+                  onClick={handleLoad}
+                  disabled={step === "loading" || !selectedFolderId}
+                >
+                  {step === "loading" ? "Loading…" : "Load Capacity"}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {err && <div className="cap-error" style={{ marginTop: 12 }}>{err}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function CapacityTab() {
   const [data, setData] = useState(null);
   const [fileName, setFileName] = useState("");
-  const [dragging, setDragging] = useState(false);
-  const [err, setErr] = useState("");
 
-  function processFile(file) {
-    if (!file) return;
-    setErr("");
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const wb = XLSX.read(e.target.result, { type: "array" });
-        const parsed = parseFile(wb);
-        setData(parsed);
-        setFileName(file.name);
-      } catch (ex) {
-        setErr("Failed to parse file: " + ex.message);
-      }
-    };
-    reader.readAsArrayBuffer(file);
+  function handleLoaded(parsed, name) {
+    setData(parsed);
+    setFileName(name);
   }
-
-  const onFileChange = (e) => processFile(e.target.files[0]);
-  const onDrop = useCallback((e) => {
-    e.preventDefault(); setDragging(false);
-    processFile(e.dataTransfer.files[0]);
-  }, []);
 
   const memberRows = useMemo(() => {
     if (!data) return [];
@@ -135,29 +244,11 @@ export default function CapacityTab() {
   }, [data]);
 
   if (!data) {
-    return (
-      <div className="cap-upload-wrap">
-        <div
-          className={`cap-dropzone${dragging ? " dragging" : ""}`}
-          onDrop={onDrop}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onClick={() => document.getElementById("cap-file-input").click()}
-        >
-          <div className="cap-drop-icon">📊</div>
-          <div className="cap-drop-title">Upload PI Capacity Excel</div>
-          <div className="cap-drop-sub">Drag &amp; drop or click to select the capacity planning file</div>
-          <div className="cap-drop-hint">Reads <code>Weekly Capacity in H</code> + <code>2) IterationPlan</code> sheets</div>
-          <input id="cap-file-input" type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={onFileChange} />
-        </div>
-        {err && <div className="cap-error">{err}</div>}
-      </div>
-    );
+    return <SharePointPicker onLoaded={handleLoaded} />;
   }
 
   const { iterations, piPrefix } = data;
 
-  // Overall team summary per iteration
   const teamSummary = iterations.map((it) => {
     const totalCap = memberRows.reduce((s, r) => s + (r.iterData.find((d) => d.iter === it)?.cap ?? 0), 0);
     const totalLoad = memberRows.reduce((s, r) => s + (r.iterData.find((d) => d.iter === it)?.load ?? 0), 0);
@@ -173,7 +264,7 @@ export default function CapacityTab() {
     <div className="cap-wrap">
       <div className="cap-file-bar">
         <span className="cap-file-name">📄 {fileName}</span>
-        <button className="dash-btn" onClick={() => { setData(null); setFileName(""); }}>Change File</button>
+        <button className="dash-btn" onClick={() => { setData(null); setFileName(""); }}>Change PI</button>
       </div>
 
       {/* Team KPI tiles per iteration */}
