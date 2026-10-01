@@ -1,18 +1,23 @@
 import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
 
 // ─── Client ID — stored in localStorage, set via UI ──────────────────────────
-const LS_KEY = "aidashboard_sp_client_id";
+const LS_CLIENT = "aidashboard_sp_client_id";
+const LS_TENANT = "aidashboard_sp_tenant_id";
 
 export function getClientId() {
-  try { return localStorage.getItem(LS_KEY) ?? ""; } catch { return ""; }
+  try { return localStorage.getItem(LS_CLIENT) ?? ""; } catch { return ""; }
+}
+export function getTenantId() {
+  try { return localStorage.getItem(LS_TENANT) ?? ""; } catch { return ""; }
 }
 
-export function setClientId(id) {
-  try { localStorage.setItem(LS_KEY, id.trim()); } catch {}
-  _pca = null; // reset so next sign-in uses the new ID
+export function setCredentials(clientId, tenantId) {
+  try {
+    localStorage.setItem(LS_CLIENT, clientId.trim());
+    localStorage.setItem(LS_TENANT, tenantId.trim());
+  } catch {}
+  _pca = null;
 }
-
-const TENANT_ID = "common";
 const SHAREPOINT_HOST = "emerson.sharepoint.com";
 const SITE_PATH = "/sites/DCXIT";
 const LIBRARY_NAME = "QA Library";
@@ -32,7 +37,7 @@ async function getPca() {
     _pca = new PublicClientApplication({
       auth: {
         clientId: getClientId(),
-        authority: `https://login.microsoftonline.com/${TENANT_ID}`,
+        authority: `https://login.microsoftonline.com/${getTenantId()}`,
         redirectUri: getRedirectUri(),
         navigateToLoginRequestUrl: true,
       },
@@ -115,7 +120,7 @@ async function resolveSiteDrive(token) {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function isConfigured() {
-  return getClientId().length > 0;
+  return getClientId().length > 0 && getTenantId().length > 0;
 }
 
 export function getSignedInAccount() {

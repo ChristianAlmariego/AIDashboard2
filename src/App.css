@@ -239,3 +239,5 @@
 .cap-sp-hint { font-size:.85rem; color:#888; }
 .cap-sp-clientid { flex:1; min-width:260px; font-family:monospace; font-size:.85rem; padding:6px 10px; border:1px solid #ced4da; border-radius:6px; }
 .cap-sp-clientid:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 2px #dbeafe; }
+.cap-sp-fields { display:flex; flex-direction:column; gap:10px; }
+.cap-sp-label { min-width:72px; font-size:.85rem; font-weight:600; }

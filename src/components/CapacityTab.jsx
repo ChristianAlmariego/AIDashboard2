@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { isConfigured, getClientId, setClientId, handleRedirect, getMe, signIn, signOut, listPiFolders, downloadPiExcel } from "../api/sharepoint";
+import { isConfigured, getClientId, getTenantId, setCredentials, handleRedirect, getMe, signIn, signOut, listPiFolders, downloadPiExcel } from "../api/sharepoint";
 
 // Utilization thresholds
 const UTIL_COLOR = (pct) => {
@@ -85,6 +85,7 @@ function SharePointPicker({ onLoaded }) {
   const [selectedFolderId, setSelectedFolderId] = useState("");
   const [err, setErr] = useState("");
   const [clientIdInput, setClientIdInput] = useState(getClientId);
+  const [tenantIdInput, setTenantIdInput] = useState(getTenantId);
   const [configured, setConfigured] = useState(isConfigured);
 
   // On mount: complete any pending redirect login
@@ -107,8 +108,8 @@ function SharePointPicker({ onLoaded }) {
       .catch(() => setStep("idle"));
   }, []);
 
-  function handleSaveClientId() {
-    setClientId(clientIdInput);
+  function handleSaveCredentials() {
+    setCredentials(clientIdInput, tenantIdInput);
     setConfigured(isConfigured());
     setErr("");
   }
@@ -160,31 +161,41 @@ function SharePointPicker({ onLoaded }) {
           </div>
           <div className="cap-sp-path">General / FY26 Documents / PI Planning Documents</div>
           <p style={{ fontSize: ".85rem", color: "#555", margin: 0 }}>
-            Enter your Azure AD <strong>Application (Client) ID</strong> to enable sign-in.
-            Register a Single-Page Application at{" "}
-            <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer">
-              portal.azure.com
-            </a>{" "}
-            with redirect URI <code>{window.location.origin + window.location.pathname}</code> and{" "}
-            <code>Sites.Read.All</code> delegated permission.
+            Enter your Azure AD credentials to enable sign-in. Both values are in{" "}
+            <strong>Azure Portal → Azure Active Directory → Overview</strong> and{" "}
+            <strong>App Registrations → your app → Overview</strong>.
           </p>
-          <div className="cap-sp-row">
-            <label className="cap-sp-label" style={{ whiteSpace: "nowrap" }}>Client ID</label>
-            <input
-              className="dash-input cap-sp-clientid"
-              type="text"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              value={clientIdInput}
-              onChange={(e) => setClientIdInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSaveClientId()}
-              spellCheck={false}
-            />
+          <div className="cap-sp-fields">
+            <div className="cap-sp-row">
+              <label className="cap-sp-label">Tenant ID</label>
+              <input
+                className="dash-input cap-sp-clientid"
+                type="text"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                value={tenantIdInput}
+                onChange={(e) => setTenantIdInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveCredentials()}
+                spellCheck={false}
+              />
+            </div>
+            <div className="cap-sp-row">
+              <label className="cap-sp-label">Client ID</label>
+              <input
+                className="dash-input cap-sp-clientid"
+                type="text"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                value={clientIdInput}
+                onChange={(e) => setClientIdInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveCredentials()}
+                spellCheck={false}
+              />
+            </div>
             <button
               className="dash-btn cap-sp-btn"
-              onClick={handleSaveClientId}
-              disabled={!clientIdInput.trim()}
+              onClick={handleSaveCredentials}
+              disabled={!clientIdInput.trim() || !tenantIdInput.trim()}
             >
-              Save
+              Save & Connect
             </button>
           </div>
           {err && <div className="cap-error" style={{ marginTop: 4 }}>{err}</div>}
