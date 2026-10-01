@@ -9,104 +9,79 @@ const UTIL_COLOR = (pct) => {
   return { bg: "#d4edda", border: "#28a745", text: "#155724" };
 };
 
-// Sprint name → iteration key (e.g. "Sprint 1" → "PI27.1.1")
-function sprintToIter(sprintLabel, piPrefix) {
-  const m = sprintLabel.match(/(\d+)/);
-  if (!m) return sprintLabel;
-  return `${piPrefix}.${m[1]}`;
-}
 
 function parseFile(wb) {
-  // ── 1. Find the "Weekly Capacity" sheet ──────────────────────────────────
-  const capSheetName = wb.SheetNames.find((n) => /weekly.*cap|cap.*h/i.test(n));
-  if (!capSheetName) throw new Error('Could not find "Weekly Capacity in H" sheet.');
-  const capWs = wb.Sheets[capSheetName];
-  const capRows = XLSX.utils.sheet_to_json(capWs, { header: 1, defval: null });
+  // ── Find the "1) TeamLogistics" sheet ───────────────────────────────────
+  const tlSheetName = wb.SheetNames.find((n) => /team.*logistics|1\)/i.test(n));
+  if (!tlSheetName) throw new Error('Could not find "1) TeamLogistics" sheet.');
+  const tlWs = wb.Sheets[tlSheetName];
+  const tlRows = XLSX.utils.sheet_to_json(tlWs, { header: 1, defval: null });
 
-  // Row 5 (index 4) = sprint labels: null, "Sprint 1", null, null, "Sprint 2" …
-  const sprintHeaderRow = capRows[4] ?? [];
-  // Row 7 (index 6) = "Name", "Week 1" … "Week 12"
-  const nameHeaderRow = capRows[6] ?? [];
-
-  // Build sprint → [col indices] map (1-based col, index 0 = label col)
-  const sprintCols = {}; // { "Sprint 1": [1,2,3], "Sprint 2": [4,5,6], … }
-  let curSprint = null;
-  for (let c = 1; c < sprintHeaderRow.length; c++) {
-    if (sprintHeaderRow[c]) curSprint = String(sprintHeaderRow[c]);
-    if (curSprint) {
-      if (!sprintCols[curSprint]) sprintCols[curSprint] = [];
-      sprintCols[curSprint].push(c);
-    }
+  // Find the "Capacity in H" section header row
+  let sectionRow = -1;
+  for (let i = 0; i < tlRows.length; i++) {
+    const cell = String(tlRows[i]?.[0] ?? "");
+    if (/capacity in h/i.test(cell)) { sectionRow = i; break; }
   }
+  if (sectionRow === -1) throw new Error('Could not find "Capacity in H" section in TeamLogistics sheet.');
 
-  const sprints = Object.keys(sprintCols).sort(); // ["Sprint 1","Sprint 2","Sprint 3","Sprint 4"]
+  // Next row has column headers: [Name, ..., PI27.1.1, PI27.1.2, PI27.1.3, PI27.1.4, TOTAL, ...]
+  const headerRow = tlRows[sectionRow + 1] ?? [];
 
-  // Detect PI prefix from IterationPlan
-  const ipSheetName = wb.SheetNames.find((n) => /iteration.*plan|2\)/i.test(n));
-  let piPrefix = "PI27.1";
-  if (ipSheetName) {
-    const ipWs = wb.Sheets[ipSheetName];
-    const ipRows = XLSX.utils.sheet_to_json(ipWs, { header: 1, defval: null });
-    for (const row of ipRows) {
-      const iter = String(row[3] ?? "");
-      const m = iter.match(/(PI\d+\.\d+)\.\d+/i);
-      if (m) { piPrefix = m[1]; break; }
-    }
-  }
+  // Cols 3–6 are sprint iteration keys for Capacity; Load block starts at col 11
+  // Read iteration names from header cols 3–6
+  const iterations = [];
+  const capCols = []; // indices for capacity sprints
+  const loadCols = []; // indices for load sprints (offset ~8 cols right)
+  let loadOffset = -1;
 
-  // Map sprint label → iteration key
-  const sprintToIterMap = {};
-  for (const s of sprints) {
-    sprintToIterMap[s] = sprintToIter(s, piPrefix);
-  }
-  const iterations = sprints.map((s) => sprintToIterMap[s]); // ["PI27.1.1", …]
-
-  // ── 2. Parse capacity rows (rows 26–35, index ~25–34) ──────────────────
-  // Find the "Weekly Capacity" section header row
-  let capDataStart = -1;
-  for (let i = 0; i < capRows.length; i++) {
-    const cell = String(capRows[i]?.[0] ?? "");
-    if (/weekly capacity/i.test(cell) && i > 15) { capDataStart = i + 2; break; } // skip header + dates row
-  }
-  if (capDataStart === -1) capDataStart = 24; // fallback
-
-  const capacity = {}; // { name: { iterKey: hours } }
-  for (let i = capDataStart; i < capRows.length; i++) {
-    const row = capRows[i];
-    const name = String(row?.[0] ?? "").trim();
-    if (!name || /total|name/i.test(name)) continue;
-    if (!row || row.slice(1).every((v) => v === null)) break;
-    capacity[name] = {};
-    for (const [sprint, cols] of Object.entries(sprintCols)) {
-      const iterKey = sprintToIterMap[sprint];
-      capacity[name][iterKey] = cols.reduce((s, c) => s + (typeof row[c] === "number" ? row[c] : 0), 0);
-    }
-  }
-
-  // ── 3. Parse load from IterationPlan ────────────────────────────────────
-  // Col A=work item, B=category, C=priority, D=iteration, E=assignee, F=hours
-  const load = {}; // { name: { iterKey: hours } }
-  const categories = {}; // { name: Set<category> }
-
-  if (ipSheetName) {
-    const ipWs = wb.Sheets[ipSheetName];
-    const ipRows = XLSX.utils.sheet_to_json(ipWs, { header: 1, defval: null });
-    for (const row of ipRows) {
-      const assignee = String(row[4] ?? "").trim();
-      const iteration = String(row[3] ?? "").trim();
-      const hours = row[5];
-      const category = String(row[1] ?? "").trim();
-      if (!assignee || !iteration || typeof hours !== "number") continue;
-      if (!load[assignee]) load[assignee] = {};
-      load[assignee][iteration] = (load[assignee][iteration] || 0) + hours;
-      if (category) {
-        if (!categories[assignee]) categories[assignee] = new Set();
-        categories[assignee].add(category);
+  for (let c = 0; c < headerRow.length; c++) {
+    const h = String(headerRow[c] ?? "").trim();
+    if (/PI\d+\.\d+\.\d+/i.test(h)) {
+      if (capCols.length < 4) {
+        capCols.push(c);
+        if (!iterations.includes(h)) iterations.push(h);
+      } else if (loadCols.length < 4) {
+        loadCols.push(c);
       }
     }
+    if (/load in h/i.test(h) && loadOffset === -1) loadOffset = c;
   }
 
-  return { capacity, load, iterations, categories, piPrefix };
+  // Fallback: if only capacity cols found, derive load cols by offset
+  if (loadCols.length === 0 && capCols.length === 4) {
+    loadCols.push(...capCols.map((c) => c + 8));
+  }
+
+  const piPrefix = iterations[0]?.match(/(PI\d+\.\d+)\.\d+/i)?.[1] ?? "PI27.1";
+
+  // ── Parse per-person rows ────────────────────────────────────────────────
+  const capacity = {}; // { name: { iterKey: hours } }
+  const load = {};     // { name: { iterKey: hours } }
+
+  const dataStart = sectionRow + 2;
+  for (let i = dataStart; i < tlRows.length; i++) {
+    const row = tlRows[i];
+    const name = String(row?.[0] ?? "").trim();
+    if (!name || /^total$/i.test(name)) {
+      if (/^total$/i.test(name)) break;
+      continue;
+    }
+    if (!row || row.slice(1).every((v) => v === null)) break;
+
+    capacity[name] = {};
+    load[name] = {};
+
+    for (let s = 0; s < iterations.length; s++) {
+      const iter = iterations[s];
+      const capVal = row[capCols[s]];
+      const loadVal = row[loadCols[s]];
+      capacity[name][iter] = typeof capVal === "number" ? capVal : 0;
+      load[name][iter] = typeof loadVal === "number" ? loadVal : 0;
+    }
+  }
+
+  return { capacity, load, iterations, categories: {}, piPrefix };
 }
 
 export default function CapacityTab() {
